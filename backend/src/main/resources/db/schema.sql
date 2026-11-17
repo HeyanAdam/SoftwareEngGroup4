@@ -1,6 +1,7 @@
 -- AI 考研 RAG 系统建表脚本（MySQL 8.0）
-CREATE DATABASE IF NOT EXISTS kaoyan DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-USE kaoyan;
+-- 注意：这里不写 CREATE DATABASE / USE，脚本作用于“当前连接的库”。
+-- 这样 docker-entrypoint-initdb.d 与后端 spring.sql.init 都能用同一份脚本，
+-- 库名由 MYSQL_DATABASE（容器）或 DB_URL（应用）决定，改库名不用改这个文件。
 
 -- ============ RBAC ============
 CREATE TABLE IF NOT EXISTS sys_user (
