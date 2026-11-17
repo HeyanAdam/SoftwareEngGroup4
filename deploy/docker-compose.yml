@@ -1,6 +1,22 @@
 name: kaoyan-ai
 
 services:
+  nginx:
+    image: nginx:alpine
+    container_name: kaoyan-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-8088}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   mysql:
     image: mysql:8.0
     container_name: kaoyan-mysql
