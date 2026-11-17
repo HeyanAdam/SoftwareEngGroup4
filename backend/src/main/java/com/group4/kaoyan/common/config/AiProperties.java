@@ -18,7 +18,6 @@ public class AiProperties {
     private Milvus milvus = new Milvus();
     private Storage storage = new Storage();
     private Rag rag = new Rag();
-    private Security security = new Security();
 
     @Data
     public static class Llm {
@@ -63,11 +62,5 @@ public class AiProperties {
         private int chunkSize = 400;
         private int chunkOverlap = 80;
         private int historyRounds = 6;
-    }
-
-    @Data
-    public static class Security {
-        private String initAdminUsername = "admin";
-        private String initAdminPassword = "admin123";
     }
 }

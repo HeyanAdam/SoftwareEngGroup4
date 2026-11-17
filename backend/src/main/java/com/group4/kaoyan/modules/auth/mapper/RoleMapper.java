@@ -24,4 +24,9 @@ public interface RoleMapper extends BaseMapper<SysRole> {
 
     @Delete("DELETE FROM sys_user_role WHERE user_id = #{userId}")
     int unbindUserRoles(@Param("userId") Long userId);
+
+    /** 某个角色下有多少个用户（用于判断“系统里还没有管理员”） */
+    @Select("SELECT COUNT(DISTINCT ur.user_id) FROM sys_user_role ur "
+            + "JOIN sys_role r ON r.id = ur.role_id WHERE r.role_code = #{roleCode}")
+    long countUsersWithRoleCode(@Param("roleCode") String roleCode);
 }

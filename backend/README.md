@@ -95,8 +95,32 @@ mvn spring-boot:run
 > `./deploy/.env`。两种路径都已配置。
 
 4. 访问 http://localhost:8080/swagger-ui.html（dev 环境开启）。
-5. 首次启动会自动建角色（ADMIN/STUDENT）、11 条权限、管理员账号（默认 admin / admin123，可用
-   `INIT_ADMIN_USERNAME` / `INIT_ADMIN_PASSWORD` 覆盖），**上线前务必改密码**。
+5. 启动时只补 RBAC 字典（角色 ADMIN/STUDENT、11 条权限码），**不预置任何账号**。管理员是
+   “第一个注册的人”：`POST /api/auth/register` 注册成功后，如果库里还没有管理员，这个用户
+   直接拿到 ADMIN；之后注册的一律是 STUDENT，需要管理员在后台提权。
+
+## 账号与权限的初始化流程
+
+| 步骤 | 发生什么 | 持久化 |
+| --- | --- | --- |
+| 首次启动 | 建角色 `ADMIN` / `STUDENT`、11 条权限码；角色只在**第一次创建**时写入默认权限 | 落 MySQL，后续启动只读不写 |
+| 第一次注册 | 库里没有 ADMIN 用户 → 该用户自动成为管理员（只发生一次） | `sys_user_role` 记录，重启不丢 |
+| 之后注册 | 一律 `STUDENT`，只有 `chat:send` | 同上 |
+| 提权 / 降权 | 管理员调 `PUT /api/admin/users/{id}/roles` 改用户的角色 | 同上 |
+| 调权限 | 管理员调 `PUT /api/admin/roles/{id}/permissions` 改角色拥有的权限码 | 同上 |
+
+重启不会被覆盖：`RbacInitializer` 只补“缺的东西”（缺的权限码、缺的角色），已存在的角色权限与
+用户角色绑定一律不动，所以控制台里改过的配置可以一直用下去。
+
+唯一管理员不能被降权：`AdminService.assignRoles` 会拦下来（否则谁都没法再进后台），要换管理员
+请先把新管理员提权。
+
+> 注意：`POST /api/auth/register` 是匿名开放的，谁先注册谁是管理员。正式环境里，数据库初始化
+> 完、拿到第一个管理员后，建议在网关层关掉这个接口或加邀请码，否则别人抢先注册就拿到了管理权。
+
+> 想重置 STUDENT 的权限为出厂值：在后台把 STUDENT 的权限改回只要 `chat:send`，或直接改库
+> `sys_role_permission`。代码层面还有 `KnowledgeService.requireAdmin(...)` 兜底，即使权限码配错，
+> 普通用户也进不了知识库接口。
 
 ## 关键接口
 
@@ -147,8 +171,8 @@ mvn spring-boot:run
 4. **输出侧**：`references` 事件与落库的 `references_json` 按角色分级——普通用户直接返回空数组
    `[]`（连文档名都不给），管理员才有 `docName / docId / chunkId / score / snippet`。
 
-`STUDENT` 是内置只读角色，启动时按固定集合同步一次权限，历史库里残留的旧权限会被清掉；
-要自定义权限请新建角色，别改 STUDENT。
+`STUDENT` 是内置的默认注册角色，初始权限就是 `chat:send`。它的权限只在**角色第一次创建**时
+写入，之后完全以数据库为准——管理员在后台加或减权限，重启都不会被还原。
 
 ## SSE 事件约定（POST /api/chat/stream）
 

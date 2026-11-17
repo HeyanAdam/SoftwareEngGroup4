@@ -23,13 +23,21 @@ import java.util.List;
 public class AuthService {
 
     public static final String ROLE_STUDENT = "STUDENT";
+    public static final String ROLE_ADMIN = "ADMIN";
 
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
     private final PermissionMapper permissionMapper;
 
+    /**
+     * 注册即分配角色：库里还没有任何管理员时，第一个注册的人直接成为管理员（只发生一次）；
+     * 之后注册的一律是 STUDENT，要当管理员由已有管理员在后台提权。
+     *
+     * synchronized 是为了让“判断有没有管理员 + 绑定角色”这两步不被并发注册穿插，
+     * 避免前两个并发注册的人同时成为管理员。
+     */
     @Transactional
-    public void register(String username, String rawPassword, String nickname) {
+    public synchronized void register(String username, String rawPassword, String nickname) {
         if (username == null || username.isBlank() || rawPassword == null || rawPassword.isBlank()) {
             throw new BizException("用户名和密码不能为空");
         }
@@ -45,11 +53,29 @@ public class AuthService {
         user.setUpdateTime(LocalDateTime.now());
         userMapper.insert(user);
 
-        SysRole student = roleMapper.selectOne(Wrappers.<SysRole>lambdaQuery()
-                .eq(SysRole::getRoleCode, ROLE_STUDENT));
-        if (student != null) {
-            roleMapper.bindUserRole(user.getId(), student.getId());
+        SysRole role = resolveRegisterRole();
+        if (role == null) {
+            log.warn("注册时没找到可用角色，用户 {} 未绑定角色，请检查 RBAC 初始化", user.getUsername());
+            return;
         }
+        roleMapper.bindUserRole(user.getId(), role.getId());
+        if (ROLE_ADMIN.equals(role.getRoleCode())) {
+            log.info("系统内暂无管理员，首个注册用户 {} 已自动成为管理员", user.getUsername());
+        }
+    }
+
+    private SysRole resolveRegisterRole() {
+        if (roleMapper.countUsersWithRoleCode(ROLE_ADMIN) == 0) {
+            SysRole admin = findRole(ROLE_ADMIN);
+            if (admin != null) {
+                return admin;
+            }
+        }
+        return findRole(ROLE_STUDENT);
+    }
+
+    private SysRole findRole(String roleCode) {
+        return roleMapper.selectOne(Wrappers.<SysRole>lambdaQuery().eq(SysRole::getRoleCode, roleCode));
     }
 
     public LoginResult login(String username, String rawPassword) {

@@ -97,11 +97,8 @@ kaoyan:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     access-key: ${MINIO_ACCESS_KEY:minioadmin}
     secret-key: ${MINIO_SECRET_KEY:minioadmin}
-    bucket: ${MINIO_BUCKET:kaoyan}
+    bucket: ${MINIO_BUCKET:kaoyan-files}
   rag:
     chunk-size: ${CHUNK_SIZE:400}
     chunk-overlap: ${CHUNK_OVERLAP:80}
     history-rounds: ${HISTORY_ROUNDS:6}
-  security:
-    init-admin-username: ${INIT_ADMIN_USERNAME:admin}
-    init-admin-password: ${INIT_ADMIN_PASSWORD:admin123}
