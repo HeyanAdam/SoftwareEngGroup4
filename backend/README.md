@@ -60,45 +60,39 @@ backend/
 
 ## 一键起中间件
 
-仓库根目录的 `deploy/` 是团队统一的中间件栈（MySQL / Redis / RabbitMQ / MinIO / Mailpit / Nginx），
-**但它没有 Milvus**（本项目向量库必需），所以 `backend/` 自带一套完整栈（多了 etcd + Milvus + 应用容器）。
+全项目只有**一份**环境配置：`deploy/.env`（`deploy/docker-compose.yml` 里已包含
+MySQL / Redis / RabbitMQ / MinIO / Milvus(+etcd) / Mailpit / Nginx）。
 
-两套**二选一**，同时起会抢 3306 / 6379 / 9000 端口：
-
-```bash
-# A. 团队中间件 + 自己补 Milvus（推荐，日常开发）
+```powershell
 cd ..\deploy
-Copy-Item .env.example .env
+Copy-Item .env.example .env     # 只填 LLM_API_KEY、EMBEDDING_API_KEY 即可
 docker compose up -d
-# 另起 etcd + milvus：
-cd ..\backend
-docker compose --env-file env/.env up -d etcd minio milvus
-
-# B. 只用 backend 这套完整栈
-docker compose --env-file env/.env up -d mysql redis etcd minio milvus
+docker compose ps
 ```
 
-全容器化（含后端镜像）：
+后端本地跑时**自动读这份 `deploy/.env`**（`application.yml` 里的 `spring.config.import`），
+不用再复制第二份、也不用手工 export 环境变量。
 
-```bash
-docker compose --env-file env/.env up -d --build
+想把后端也容器化（可选）：
+
+```powershell
+docker compose --profile app up -d --build
 ```
-
-两套栈的数据库口径已对齐：库 `kaoyan_ai`、用户 `kaoyan` / `kaoyan123`（见 `deploy/.env.example`），
-`backend/env/.env.example` 里的默认值与之相同，所以不用额外改配置就能连上。
 
 ## 本地启动
 
-1. 复制环境模板：`Copy-Item env\.env.example env\.env`，按需填 `DB_PASSWORD`、`LLM_API_KEY`、
-   `EMBEDDING_API_KEY` 等。
+1. 确认 `deploy/.env` 存在（见上一节），填好两个模型 Key；想用自己的 Key 又不影响别人时，
+   复制 `backend/env/.env.example` 为 `backend/env/.env` 只写覆盖项。
 2. **建表不用手动做**：`spring.sql.init` 每次启动执行 `src/main/resources/db/schema.sql`
-   （全 `CREATE TABLE IF NOT EXISTS`，可重复执行），所以用 `deploy/` 的 MySQL 也能自动建表。
-3. 配置环境变量（IDEA 可在 Run Configuration 里引用 `env\.env`，或用 PowerShell）：
+   （全 `CREATE TABLE IF NOT EXISTS`，可重复执行）。
+3. 直接启动，无需手工设环境变量：
 
 ```powershell
-$env:DB_PASSWORD="kaoyan123"; $env:LLM_API_KEY="sk-xxx"; $env:EMBEDDING_API_KEY="sk-xxx"
 mvn spring-boot:run
 ```
+
+> IDE 里跑时工作目录一般是 `backend/`，`../deploy/.env` 能被找到；从仓库根目录跑 jar 也能找到
+> `./deploy/.env`。两种路径都已配置。
 
 4. 访问 http://localhost:8080/swagger-ui.html（dev 环境开启）。
 5. 首次启动会自动建角色（ADMIN/STUDENT）、11 条权限、管理员账号（默认 admin / admin123，可用

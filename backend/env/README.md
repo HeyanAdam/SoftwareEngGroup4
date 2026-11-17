@@ -1,23 +1,18 @@
-# env/ 环境文件
+# env/ 目录说明
 
-这里只放“和部署环境有关、但不应进代码库”的配置，Spring 的 `application*.yml` 在
-`src/main/resources/config/`（Spring Boot 默认会读 `classpath:/config/`）。
+这里的文件**不是**必需的。全项目只有一份环境配置，在仓库根目录：
+
+```
+deploy/.env.example   → 复制成 deploy/.env 使用
+```
+
+后端启动会自动读 `deploy/.env`（`application.yml` 里配了 `spring.config.import`，
+本地 IDE、`mvn spring-boot:run`、`java -jar` 都生效）。
 
 | 文件 | 用途 |
 | --- | --- |
-| `.env.example` | 环境变量模板，复制成 `env/.env` 后填真实值 |
+| `env/.env.example` | 可选的**个人覆盖**模板；复制成 `env/.env`，只写要覆盖的键（如自己的 `LLM_API_KEY`） |
 
-使用方式：
+覆盖优先级（后者覆盖前者）：`deploy/.env` → `backend/env/.env` → 系统环境变量。
 
-```powershell
-# 1) 复制模板
-Copy-Item env\.env.example env\.env
-# 2) 填 DB_PASSWORD / LLM_API_KEY / EMBEDDING_API_KEY 等
-# 3) 启动中间件（让 compose 读这个文件）
-docker compose --env-file env\.env up -d mysql redis etcd minio milvus
-```
-
-IDE 里跑后端时，把 `env\.env` 里的变量加进 Run Configuration 的环境变量，或启动前在终端里
-`$env:DB_PASSWORD="..."` 逐个设置。
-
-`env/.env` 已在 `.gitignore` 中被忽略，**不要提交**。
+`env/.env` 已被 `.gitignore` 忽略，**不要提交**。
