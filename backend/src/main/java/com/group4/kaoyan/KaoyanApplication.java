@@ -8,14 +8,9 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import com.group4.kaoyan.platform.storage.MinioProperties;
 
 @SpringBootApplication
-//@EnableAsync
-@EnableConfigurationProperties(MinioProperties.class)
-public class KaoyanApplication {
-import org.springframework.scheduling.annotation.EnableAsync;
-
 @EnableAsync
 @MapperScan("com.group4.kaoyan.modules")
-@SpringBootApplication
+@EnableConfigurationProperties(MinioProperties.class)
 public class KaoyanApplication {
     public static void main(String[] args) {
         SpringApplication.run(KaoyanApplication.class, args);

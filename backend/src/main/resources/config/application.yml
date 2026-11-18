@@ -87,7 +87,6 @@ sa-token:
     - /api/kb/**
     - /api/auth/login
     - /api/auth/register
-    - /health
 
 springdoc:
   api-docs:
