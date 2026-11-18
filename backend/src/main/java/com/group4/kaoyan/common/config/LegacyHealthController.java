@@ -11,9 +11,9 @@ import jakarta.annotation.Resource;
 import java.util.HashMap;
 import java.util.Map;
 
-@RestController
+@RestController("legacyHealthController")
 @RequestMapping("/health")
-public class HealthController {
+public class LegacyHealthController {
 
     @Resource
     private MinioClient minioClient;
