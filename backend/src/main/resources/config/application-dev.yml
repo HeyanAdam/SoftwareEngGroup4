@@ -12,3 +12,9 @@ minio:
   access-key: minioadmin
   secret-key: minioadmin
   bucket-name: kaoyan-files
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true

@@ -27,7 +27,7 @@ import java.util.Map;
  * 2) 不预置管理员账号：系统里第一个注册的用户自动成为管理员，之后靠后台提权。
  */
 @Slf4j
-//@Component
+@Component
 @RequiredArgsConstructor
 public class RbacInitializer implements ApplicationRunner {
 

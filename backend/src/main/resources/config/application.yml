@@ -6,6 +6,8 @@ server:
       force: true
 
 spring:
+  main:
+    allow-bean-definition-overriding: true
   application:
     name: kaoyan-backend
   # 直接读取仓库根目录的 deploy/.env（复制 deploy/.env.example 一份即可，不用再配第二份）。
@@ -64,6 +66,12 @@ sa-token:
   is-share: false
   token-style: uuid
   is-log: false
+  exclude-path:
+    - /api/kb
+    - /api/kb/**
+    - /api/auth/login
+    - /api/auth/register
+    - /health
 
 springdoc:
   api-docs:
@@ -97,6 +105,7 @@ kaoyan:
     chunk-size: ${CHUNK_SIZE:400}
     chunk-overlap: ${CHUNK_OVERLAP:80}
     history-rounds: ${HISTORY_ROUNDS:6}
+
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
   access-key: ${MINIO_ACCESS_KEY:minioadmin}

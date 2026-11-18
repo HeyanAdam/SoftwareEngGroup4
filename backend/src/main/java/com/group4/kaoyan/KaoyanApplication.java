@@ -10,6 +10,12 @@ import com.group4.kaoyan.platform.storage.MinioProperties;
 //@EnableAsync
 @EnableConfigurationProperties(MinioProperties.class)
 public class KaoyanApplication {
+import org.springframework.scheduling.annotation.EnableAsync;
+
+@EnableAsync
+@SpringBootApplication
+public class KaoyanApplication {
+
     public static void main(String[] args) {
         SpringApplication.run(KaoyanApplication.class, args);
     }

@@ -56,6 +56,20 @@ public class MilvusVectorStore implements VectorStore, InitializingBean, Disposa
     }
 
 
+        AiProperties.Milvus cfg = props.getMilvus();
+        try {
+            client = new MilvusServiceClient(ConnectParam.newBuilder()
+                    .withHost(cfg.getHost())
+                    .withPort(cfg.getPort())
+                    .build());
+            ensureCollection();
+            log.info("Milvus 已连接 {}:{}，collection={}，维度={}",
+                    cfg.getHost(), cfg.getPort(), cfg.getCollection(), cfg.getDimension());
+        } catch (Exception e) {
+            log.warn("Milvus 初始化失败，向量检索暂不可用：{}", e.getMessage());
+        }
+    }
+
     @Override
     public void destroy() {
         if (client != null) {
