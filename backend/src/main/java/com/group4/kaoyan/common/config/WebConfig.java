@@ -29,11 +29,12 @@ public class WebConfig implements WebMvcConfigurer {
                 .maxAge(3600);
     }
 
-    /** 除登录注册与文档接口外，/api/** 均需登录 */
+    /** 除登录注册与健康检查接口外，/api/** 均需登录 */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SaInterceptor(handler -> SaRouter.match("/api/**")
                         .notMatch("/api/auth/login", "/api/auth/register")
+                        .notMatch("/api/v1/health/**")
                         .check(r -> StpUtil.checkLogin())))
                 .addPathPatterns("/**");
     }
