@@ -1,22 +1,5 @@
 name: kaoyan-ai
-
 services:
-  nginx:
-    image: nginx:alpine
-    container_name: kaoyan-nginx
-    restart: unless-stopped
-    ports:
-      - "${NGINX_PORT:-8088}:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   mysql:
     image: mysql:8.0
     container_name: kaoyan-mysql
@@ -32,8 +15,6 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      # 建表脚本跑在这里（与应用里的 spring.sql.init 重复但都幂等，二选一坏了也不影响）
-      - ../backend/src/main/resources/db:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
@@ -72,58 +53,20 @@ services:
       timeout: 5s
       retries: 10
 
-  minio:
-    image: minio/minio
-    container_name: kaoyan-minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    ports:
-      - "${MINIO_API_PORT}:9000"
-      - "${MINIO_CONSOLE_PORT}:9001"
-    volumes:
-      - minio_data:/data
-
-  # ---------- 向量库所需的 etcd（Milvus 元数据），不对外暴露端口 ----------
-  etcd:
-    image: quay.io/coreos/etcd:v3.5.5
-    container_name: kaoyan-etcd
-    restart: unless-stopped
-    environment:
-      ETCD_AUTO_COMPACTION_MODE: revision
-      ETCD_AUTO_COMPACTION_RETENTION: "1000"
-      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
-    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir /etcd
-    volumes:
-      - etcd_data:/etcd
-
-  # ---------- Milvus（standalone，向量存在 MinIO，元数据在 etcd） ----------
-  milvus:
-    image: milvusdb/milvus:v2.4.9
-    container_name: kaoyan-milvus
-    restart: unless-stopped
-    command: ["milvus", "run", "standalone"]
-    environment:
-      ETCD_ENDPOINTS: etcd:2379
-      MINIO_ADDRESS: minio:9000
-      MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
-      MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
-      COMMON_STORAGETYPE: local
-    ports:
-      - "${MILVUS_PORT:-19530}:19530"
-      - "9091:9091"
-    volumes:
-      - milvus_data:/var/lib/milvus
-    depends_on:
-      - etcd
-      - minio
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
-      interval: 15s
-      timeout: 5s
-      retries: 20
+  # 暂时去掉MinIO镜像，国内拉取被墙，测试MQ不需要MinIO
+  # minio:
+  #   image: minio/minio
+  #   container_name: kaoyan-minio
+  #   restart: unless-stopped
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+  #     MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+  #   ports:
+  #     - "${MINIO_API_PORT}:9000"
+  #     - "${MINIO_CONSOLE_PORT}:9001"
+  #   volumes:
+  #     - minio_data:/data
 
   mailpit:
     image: axllent/mailpit
@@ -133,42 +76,8 @@ services:
       - "${MAILPIT_SMTP_PORT}:1025"
       - "${MAILPIT_WEB_PORT}:8025"
 
-  # ---------- 全容器化跑后端（可选，用 --profile app 才启动） ----------
-  app:
-    profiles: ["app"]
-    build:
-      context: ../backend
-      dockerfile: docker/Dockerfile
-    container_name: kaoyan-app
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
-      DB_USERNAME: ${MYSQL_USER}
-      DB_PASSWORD: ${MYSQL_PASSWORD}
-      REDIS_HOST: redis
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      MILVUS_HOST: milvus
-      MILVUS_PORT: "19530"
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-    ports:
-      - "${SERVER_PORT:-8080}:8080"
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      milvus:
-        condition: service_started
-
 volumes:
   mysql_data:
   redis_data:
   rabbitmq_data:
   minio_data:
-  etcd_data:
-  milvus_data:

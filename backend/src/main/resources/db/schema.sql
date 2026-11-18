@@ -1,6 +1,5 @@
 -- AI 考研 RAG 系统建表脚本（MySQL 8.0）
-CREATE DATABASE IF NOT EXISTS kaoyan DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-USE kaoyan;
+-- 注意：连接URL已指定使用kaoyan_ai库，不需要手动创建库和切换库
 
 -- ============ RBAC ============
 CREATE TABLE IF NOT EXISTS sys_user (

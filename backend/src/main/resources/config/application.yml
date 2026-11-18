@@ -4,7 +4,6 @@ server:
     encoding:
       charset: UTF-8
       force: true
-
 spring:
   application:
     name: kaoyan-backend
@@ -22,6 +21,8 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 60MB
+
+  # ========== MySQL 数据源配置 ==========
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: ${DB_URL:jdbc:mysql://localhost:3306/kaoyan_ai?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
@@ -38,6 +39,8 @@ spring:
       mode: ${DB_INIT_MODE:always}
       schema-locations: classpath:db/schema.sql
       encoding: UTF-8
+
+  # ========== Redis 配置 ==========
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -45,6 +48,19 @@ spring:
       password: ${REDIS_PASSWORD:}
       database: ${REDIS_DB:0}
       timeout: 5000
+
+  # ============ RabbitMQ 配置 新增 ============
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:kaoyan}
+    password: ${RABBITMQ_PWD:kaoyan123}
+    virtual-host: /
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
 
 mybatis-plus:
   configuration:
