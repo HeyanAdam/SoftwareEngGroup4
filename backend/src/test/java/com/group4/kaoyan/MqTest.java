@@ -3,48 +3,60 @@ package com.group4.kaoyan;
 import com.group4.kaoyan.dto.DocParseTaskDTO;
 import com.group4.kaoyan.platform.messaging.RabbitMessagePublisher;
 import com.group4.kaoyan.platform.messaging.RabbitTopologyConfig;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
-@SpringBootTest
-@ActiveProfiles("dev")
-public class MqTest {
+/**
+ * MQ 单元测试（CI 稳定可跑）。
+ *
+ * <p>说明：本测试不启动 Spring 容器，也不连接真实 RabbitMQ，
+ * 只用 Mockito 校验 {@link RabbitMessagePublisher} 的发送逻辑
+ * （交换机名、routing key、消息内容是否正确）。
+ * 因此 GitHub Actions 中没有 MySQL / Redis / RabbitMQ 也能通过。</p>
+ *
+ * <p>真实消息收发验证见 {@code MqIntegrationTest}（仅本地手动执行）。</p>
+ */
+@ExtendWith(MockitoExtension.class)
+class MqTest {
 
-    @Autowired
-    private RabbitMessagePublisher publisher;
-
-    @Autowired
+    @Mock
     private RabbitTemplate rabbitTemplate;
 
-    /**
-     * 收发闭环测试：
-     * 1. 通过 Publisher 往 foundation.test.queue 发一条消息
-     * 2. 用 receiveAndConvert 同步取回
-     * 3. 断言取回内容与发送内容一致
-     */
+    private RabbitMessagePublisher publisher;
+
+    @BeforeEach
+    void setUp() {
+        // 直接 new，不依赖 Spring 容器
+        publisher = new RabbitMessagePublisher(rabbitTemplate);
+    }
+
     @Test
-    void testSendAndReceiveMessage() {
+    @DisplayName("测试队列发送：交换机、routing key、消息体正确")
+    void testSendTestMessage() {
         String expectMsg = "rabbitmq ok";
 
         publisher.sendTestMessage(expectMsg);
 
-        Object actual = rabbitTemplate.receiveAndConvert(RabbitTopologyConfig.TEST_QUEUE, 3000L);
-        assertNotNull(actual, "3 秒内没有从 foundation.test.queue 收到消息，检查 RabbitMQ 是否启动");
-        assertEquals(expectMsg, String.valueOf(actual));
-        System.out.println("✅ MQ 收发闭环通过：" + actual);
+        verify(rabbitTemplate, times(1)).convertAndSend(
+                eq(RabbitTopologyConfig.EXCHANGE),
+                eq(RabbitTopologyConfig.TEST_ROUTING_KEY),
+                eq(expectMsg)
+        );
     }
 
-    /**
-     * 文档解析任务发送测试：发一条真实的 DocParseTaskDTO 到 doc_parse_queue，
-     * 由 DocParseConsumer 监听消费（消费日志会打印任务信息）。
-     */
     @Test
+    @DisplayName("文档解析任务发送：交换机、routing key、DTO 正确")
     void testSendDocParseTask() {
         DocParseTaskDTO task = new DocParseTaskDTO();
         task.setDocId(1L);
@@ -52,6 +64,32 @@ public class MqTest {
         task.setFileUrl("http://localhost:9000/kaoyan-files/test/test.pdf");
 
         publisher.sendDocParseTask(task);
-        System.out.println("✅ 文档解析任务已投递：" + task.getFileName());
+
+        verify(rabbitTemplate, times(1)).convertAndSend(
+                eq(RabbitTopologyConfig.EXCHANGE),
+                eq(RabbitTopologyConfig.DOC_PARSE_ROUTING_KEY),
+                eq(task)
+        );
+    }
+
+    @Test
+    @DisplayName("拓扑常量与队列命名符合约定")
+    void testTopologyConstants() {
+        RabbitTopologyConfig topology = new RabbitTopologyConfig();
+
+        // 交换机、队列名与文档约定一致
+        assertTopologyNames();
+
+        assertEquals(RabbitTopologyConfig.TEST_QUEUE, topology.foundationTestQueue().getName());
+        assertEquals(RabbitTopologyConfig.DOC_PARSE_QUEUE, topology.docParseQueue().getName());
+        assertEquals(RabbitTopologyConfig.EXCHANGE, topology.kaoyanExchange().getName());
+    }
+
+    private void assertTopologyNames() {
+        assertEquals("kaoyan.direct", RabbitTopologyConfig.EXCHANGE);
+        assertEquals("foundation.test.queue", RabbitTopologyConfig.TEST_QUEUE);
+        assertEquals("foundation.test", RabbitTopologyConfig.TEST_ROUTING_KEY);
+        assertEquals("doc_parse_queue", RabbitTopologyConfig.DOC_PARSE_QUEUE);
+        assertEquals("doc.parse.task", RabbitTopologyConfig.DOC_PARSE_ROUTING_KEY);
     }
 }
