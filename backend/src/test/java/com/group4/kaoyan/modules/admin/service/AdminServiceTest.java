@@ -1,6 +1,7 @@
 package com.group4.kaoyan.modules.admin.service;
 
 import com.group4.kaoyan.common.BizException;
+import com.group4.kaoyan.common.security.AccountStatusGuard;
 import com.group4.kaoyan.common.security.RbacSnapshotCache;
 import com.group4.kaoyan.common.security.RoleConstants;
 import com.group4.kaoyan.modules.auth.entity.SysRole;
@@ -29,8 +30,9 @@ class AdminServiceTest {
     private final RoleMapper roleMapper = mock(RoleMapper.class);
     private final PermissionMapper permissionMapper = mock(PermissionMapper.class);
     private final RbacSnapshotCache cache = mock(RbacSnapshotCache.class);
+    private final AccountStatusGuard accountStatusGuard = mock(AccountStatusGuard.class);
     private final AdminService service =
-            new AdminService(userMapper, roleMapper, permissionMapper, cache);
+            new AdminService(userMapper, roleMapper, permissionMapper, cache, accountStatusGuard);
 
     private SysRole role(long id, String code) {
         SysRole r = new SysRole();

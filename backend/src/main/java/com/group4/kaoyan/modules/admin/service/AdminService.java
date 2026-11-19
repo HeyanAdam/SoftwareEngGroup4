@@ -7,6 +7,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.group4.kaoyan.common.BizException;
 import com.group4.kaoyan.common.ErrorCode;
 import com.group4.kaoyan.common.R.PageData;
+import com.group4.kaoyan.common.security.AccountStatusGuard;
 import com.group4.kaoyan.common.security.RbacSnapshotCache;
 import com.group4.kaoyan.common.security.RoleConstants;
 import com.group4.kaoyan.modules.admin.dto.AdminUserVO;
@@ -37,6 +38,8 @@ public class AdminService {
     private final PermissionMapper permissionMapper;
     /** 授权变更后立即失效权限快照，保证"改完就生效" */
     private final RbacSnapshotCache snapshotCache;
+    /** 账号状态兜底缓存：禁用/启用后立即生效，不必等 TTL */
+    private final AccountStatusGuard accountStatusGuard;
 
     /**
      * 用户分页列表（参数与文档 1.7 节一致：page_num / page_size / status）。
@@ -86,11 +89,14 @@ public class AdminService {
     /**
      * 启用 / 禁用用户。
      *
-     * <p>禁用后要做两件事，缺一件都会留下"已禁用但还能用"的漏洞：</p>
+     * <p>禁用后要做三件事，缺一件都会留下"已禁用但还能用"的漏洞：</p>
      * <ol>
      *   <li>清掉该用户的权限快照，避免 TTL 内继续命中旧快照；</li>
+     *   <li>清掉账号状态兜底缓存，让 AccountStatusGuard 下一次请求立刻查到 status=0；</li>
      *   <li>踢掉已有会话，否则他手上的 Token 还能继续发请求（Sa-Token 已登录态不查库）。</li>
      * </ol>
+     * <p>第 2 条是第 3 条的兜底：kickout 只能踢当前会话，多端登录或踢人失手时，
+     * 鉴权链上的状态校验仍然会把请求挡在门外（403 + 10013）。</p>
      */
     public void updateStatus(Long userId, Integer status) {
         SysUser user = userMapper.selectById(userId);
@@ -103,6 +109,7 @@ public class AdminService {
         update.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(update);
         snapshotCache.evict(userId);
+        accountStatusGuard.evict(userId);
         if (status != null && status == 0) {
             try {
                 StpUtil.kickout(userId);

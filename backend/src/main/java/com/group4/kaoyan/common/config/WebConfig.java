@@ -3,6 +3,7 @@ package com.group4.kaoyan.common.config;
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpUtil;
+import com.group4.kaoyan.common.security.AccountStatusGuard;
 import com.group4.kaoyan.platform.idempotency.IdempotencyInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
@@ -19,6 +20,7 @@ import org.springframework.context.annotation.Bean;
 public class WebConfig implements WebMvcConfigurer {
 
     private final IdempotencyInterceptor idempotencyInterceptor;
+    private final AccountStatusGuard accountStatusGuard;
 
     /** 跨域：生产环境请把 allowedOrigins 收敛到实际前端域名 */
     @Override
@@ -50,12 +52,19 @@ public class WebConfig implements WebMvcConfigurer {
      *
      * <p>注意：不要再往这里加「业务路径放行」（历史上的 {@code /api/kb/**} 放行已删除）——
      * 匿名可访问的接口只能由 {@link #PUBLIC_PATHS} 显式声明，否则新增接口忘加注解就等于裸奔。</p>
+     *
+     * <p>登录校验之后紧跟一次账号状态兜底：Sa-Token 的登录态存在 Redis 里、之后不再查库，
+     * 单靠 {@code kickout} 无法覆盖多端会话或踢人失手的情况，所以每次请求确认
+     * {@code status != 0}，详见 {@link AccountStatusGuard}。</p>
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SaInterceptor(handler -> SaRouter.match("/api/**")
                         .notMatch(PUBLIC_PATHS)
-                        .check(r -> StpUtil.checkLogin())))
+                        .check(r -> {
+                            StpUtil.checkLogin();
+                            accountStatusGuard.ensureActive(StpUtil.getLoginIdAsLong());
+                        })))
                 .addPathPatterns("/**");
         // 幂等拦截器排在登录校验之后，只对 @Idempotent 方法生效
         registry.addInterceptor(idempotencyInterceptor).addPathPatterns("/api/**");

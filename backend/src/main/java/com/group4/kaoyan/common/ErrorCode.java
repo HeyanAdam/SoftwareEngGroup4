@@ -37,6 +37,8 @@ public final class ErrorCode {
     public static final int NO_DATA_ACCESS = 10009;
     /** 操作过于频繁（HTTP 429）。 */
     public static final int TOO_MANY_REQUESTS = 10010;
+    /** 账号已被禁用（HTTP 403）：登录入口与鉴权链（AccountStatusGuard）共用同一码。 */
+    public static final int ACCOUNT_DISABLED = 10013;
     /** 未分类服务器异常（HTTP 500）。 */
     public static final int SERVER_ERROR = 90000;
 
@@ -53,11 +55,11 @@ public final class ErrorCode {
             Map.entry(NO_PERMISSION, 403),
             Map.entry(NO_DATA_ACCESS, 403),
             Map.entry(TOO_MANY_REQUESTS, 429),
-            // 与 P1 的 AuthErrorCode 对齐（10011 幂等键处理中 / 10012 请求类型不支持 / 10013 账号已禁用），
+            // 与 P1 的 AuthErrorCode 对齐（10011 幂等键处理中 / 10012 请求类型不支持），
             // 这些码由 AuthExceptionHandler 就地给出状态，这里补映射避免走兜底落到 400。
             Map.entry(10011, 409),
             Map.entry(10012, 400),
-            Map.entry(10013, 403),
+            Map.entry(ACCOUNT_DISABLED, 403),
             Map.entry(SERVER_ERROR, 500)
     );
 
