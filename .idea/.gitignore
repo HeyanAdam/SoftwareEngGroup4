@@ -1,10 +1,14 @@
-# 默认忽略的文件
-/shelf/
+# 只忽略个人/机器相关文件；团队共享配置由仓库根 .gitignore 白名单管理
 /workspace.xml
-# 基于编辑器的 HTTP 客户端请求
-/httpRequests/
-# 已忽略包含查询文件的默认文件夹
-/queries/
-# Datasource local storage ignored files
+/tasks.xml
+/usage.statistics.xml
+/statistics.xml
+/shelf/
+/jarRepositories.xml
+/dictionaries/
 /dataSources/
+/dataSources.xml
 /dataSources.local.xml
+/httpRequests/
+/queries/
+/*.iml.bak
