@@ -119,7 +119,10 @@ function handleError(error: unknown): void {
   // 限流
   if (error.code === 10010 || error.httpStatus === 429) {
     const retry = error.retryAfter > 0 ? error.retryAfter : 60
-    void router.push({ name: 'TooManyRequests', query: { retry: String(retry) } })
+    void router.push({
+      name: 'TooManyRequests',
+      query: { retry: String(retry), rid: error.requestId },
+    })
     return
   }
 
@@ -130,9 +133,18 @@ function handleError(error: unknown): void {
     return
   }
 
-  // 账号禁用（HTTP 403）
+  // 账号禁用（HTTP 403）/ 无接口权限
   if (error.code === 10013 || error.code === 10008) {
-    void router.push({ name: 'Forbidden', query: { code: String(error.code) } })
+    void router.push({
+      name: 'Forbidden',
+      query: { code: String(error.code), rid: error.requestId },
+    })
+    return
+  }
+
+  // 邮箱未注册（邮箱验证码登录场景）
+  if (error.code === 10007) {
+    ElMessage.error('该邮箱尚未注册，请先注册账号')
     return
   }
 

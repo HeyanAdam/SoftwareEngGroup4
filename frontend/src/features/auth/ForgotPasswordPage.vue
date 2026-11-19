@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, reactive, ref } from 'vue'
+import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -11,7 +11,7 @@ import {
   patternRule,
   requiredRule,
 } from './utils/validators'
-import { ApiError } from '../../shared/api/request'
+import { ApiError, createIdempotencyKey } from '../../shared/api/request'
 import './styles/auth.css'
 
 const router = useRouter()
@@ -48,6 +48,24 @@ const rules: FormRules = {
 const countdown = ref(0)
 const submitting = ref(false)
 let countdownTimer: number | undefined
+
+/** 幂等键：同一表单重复提交复用；表单内容被修改后自动换新键 */
+const idempotencyKey = ref('')
+
+function resolveIdempotencyKey(): string {
+  if (!idempotencyKey.value) {
+    idempotencyKey.value = createIdempotencyKey()
+  }
+  return idempotencyKey.value
+}
+
+watch(
+  form,
+  () => {
+    idempotencyKey.value = ''
+  },
+  { deep: true },
+)
 
 function startCountdown(seconds: number): void {
   countdown.value = Math.max(1, seconds)
@@ -116,7 +134,10 @@ function handleError(error: unknown): void {
 
   if (error.code === 10010 || error.httpStatus === 429) {
     const retry = error.retryAfter > 0 ? error.retryAfter : 60
-    void router.push({ name: 'TooManyRequests', query: { retry: String(retry) } })
+    void router.push({
+      name: 'TooManyRequests',
+      query: { retry: String(retry), rid: error.requestId },
+    })
     return
   }
 
@@ -130,12 +151,16 @@ async function submit(): Promise<void> {
 
   submitting.value = true
   try {
-    await resetPassword({
-      email: form.email,
-      verify_code: form.verify_code,
-      new_password: form.new_password,
-      confirm_password: form.confirm_password,
-    })
+    await resetPassword(
+      {
+        email: form.email,
+        verify_code: form.verify_code,
+        new_password: form.new_password,
+        confirm_password: form.confirm_password,
+      },
+      resolveIdempotencyKey(),
+    )
+    idempotencyKey.value = ''
     ElMessage.success('密码已重置，请重新登录')
     void router.replace({ name: 'Login' })
   } catch (error) {

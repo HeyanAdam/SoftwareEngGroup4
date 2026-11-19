@@ -1,4 +1,4 @@
-import { createIdempotencyKey, get, post } from '../../../shared/api/request'
+import { get, post } from '../../../shared/api/request'
 import type {
   CaptchaData,
   LoginByEmailCodeRequest,
@@ -33,16 +33,22 @@ export function loginWithEmailCode(payload: LoginByEmailCodeRequest): Promise<Lo
   return post<LoginResult>('/auth/login', payload)
 }
 
-/** POST /auth/register 注册（成功 HTTP 201，直接返回 token） */
-export function registerAccount(payload: RegisterRequest): Promise<RegisterResult> {
+/** POST /auth/register 注册（成功 HTTP 201，直接返回 token；幂等键由表单复用） */
+export function registerAccount(
+  payload: RegisterRequest,
+  idempotencyKey: string,
+): Promise<RegisterResult> {
   return post<RegisterResult>('/auth/register', payload, {
-    headers: { 'Idempotency-Key': createIdempotencyKey() },
+    headers: { 'Idempotency-Key': idempotencyKey },
   })
 }
 
-/** POST /auth/password-reset 重置密码 */
-export function resetPassword(payload: PasswordResetRequest): Promise<null> {
+/** POST /auth/password-reset 重置密码（幂等键由表单复用） */
+export function resetPassword(
+  payload: PasswordResetRequest,
+  idempotencyKey: string,
+): Promise<null> {
   return post<null>('/auth/password-reset', payload, {
-    headers: { 'Idempotency-Key': createIdempotencyKey() },
+    headers: { 'Idempotency-Key': idempotencyKey },
   })
 }

@@ -28,8 +28,19 @@ const desc = computed<string>(() => {
   return UNAUTHORIZED_MESSAGE
 })
 
+/** 后端返回的 X-Request-Id，便于把报错反馈给队友排查 */
+const requestId = computed<string>(() => {
+  const raw = route.query.rid
+  return Array.isArray(raw) ? (raw[0] ?? '') : (raw ?? '')
+})
+
 function goLogin(): void {
   void router.replace({ name: 'Login' })
+}
+
+/** 重试：留在当前错误页，仅刷新页面重新渲染 */
+function retry(): void {
+  location.reload()
 }
 </script>
 
@@ -39,9 +50,11 @@ function goLogin(): void {
       <div class="auth-error__code">403</div>
       <h1 class="auth-error__title">访问被拒绝</h1>
       <p class="auth-error__desc">{{ desc }}</p>
+      <p v-if="requestId" class="auth-error__rid">请求编号：{{ requestId }}</p>
       <div class="auth-error__actions">
         <el-button type="primary" @click="goLogin">返回登录</el-button>
         <el-button @click="router.replace('/dashboard')">回到首页</el-button>
+        <el-button @click="retry">重试</el-button>
       </div>
     </div>
   </div>

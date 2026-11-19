@@ -242,6 +242,9 @@ export async function del<T = unknown>(url: string, config?: AxiosRequestConfig)
   return execute<T>('DELETE', url, undefined, () => service.delete<ApiResult<T>>(url, config))
 }
 
+/** DELETE 别名导出：对齐任务 1 契约里的 delete 命名（delete 为 JS 保留字，故导出名用 deleteRequest） */
+export const deleteRequest = del
+
 /** 文件上传 */
 export async function upload<T = unknown>(
   url: string,

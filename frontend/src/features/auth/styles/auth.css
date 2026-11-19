@@ -176,6 +176,13 @@
   color: #7d9c8c;
 }
 
+.auth-error__rid {
+  margin: -10px 0 18px;
+  font-size: 12px;
+  color: #9db8aa;
+  word-break: break-all;
+}
+
 .auth-error__actions {
   display: flex;
   gap: 12px;
