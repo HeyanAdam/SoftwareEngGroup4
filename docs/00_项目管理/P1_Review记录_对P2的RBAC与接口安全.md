@@ -108,7 +108,31 @@ public void checkReadable(Long currentUserId, Long ownerUserId);
 
 ---
 
-## 6. 请 P2 回的四个问题
+## 6. 复核（2026-11-19，对象：`feat/auth-foundation` @ `9c8135b`）
+
+P2 已创建 `feat/auth-foundation`，并把 P1 分支（`f66f634`…`fbebb19`）与 RBAC 分支合并进来（合并提交 `6042aa0`）。在该分支上 `mvn test` 实测：**82 项，失败 0，跳过 2**。逐条复核上文的结论：
+
+| 编号 | 原结论 | 复核结果 |
+|---|---|---|
+| 阻断 1 | `feat/auth-rbac` 带回归 | **已解决**。foundation 保留 `V1–V6` 全部迁移；`pom.xml` 有 `flyway-core`、`flyway-mysql`、`spring-boot-starter-mail`、lombok 1.18.38；知识库/对话改用 `RoleConstants`，不再写死 `"ADMIN"` |
+| 阻断 2 | 数据范围服务未实现 | **已解决**。新增 `common/security/DataScopeService` + `DataScopeServiceTest`，越权可抛 10009 |
+| 应修 3 | 禁用不踢下线 | **部分解决**。`AdminService.updateStatus` 已踢下线，但用的是 `StpUtil.logout(userId)`，不是 `SessionService.logoutUser(userId)`。Sa-Token 配置为 `is-share: false`，一个账号可能有多 Token，`logout(loginId)` 只覆盖活跃那一个，**建议改调 `SessionService.logoutUser` 一次性吊销全部 Token** |
+| 应修 4 | 审计未落库 | **未解决**。`sys_audit_log` 表在 V3 已建，但代码里仍只有 `log.info`，没有 `AuditLog` 实体与 Mapper |
+| 应修 5 | 管理员初始化缺失 | **已解决**。新增 `modules/auth/init/AdminBootstrapInitializer`（受控建管理员，未回退到"首用户当管理员"） |
+| 应修 6 | 管理接口路径、`/api/kb` 匿名 | **未解决**。`AdminController` 仍是 `@RequestMapping("/api/admin")`，与《权限码清单》登记的 `/api/v1/admin/**` 不一致；`WebConfig` 的 `/api/kb` 白名单仍在 |
+| 建议 7 | 状态变更后未清快照 | **未解决**。`updateStatus` 仍未 `snapshotCache.evict(userId)` |
+
+**P1 侧确认**：foundation 合并过程中**没有改动 P1 的认证代码**（`AuthService`、`AuthController`、DTO/VO、各 Service、`AuthExceptionHandler` 全部与我分支一致），仅 `SysRole` 注释措辞、`RbacInitializer` 加 `@Order(1)` 这类无害调整。
+
+### 新发现（阻断级，需 P2 处理）
+
+**foundation 根目录混进了 120 个文件的嵌套副本 `SoftwareEngGroup4-main/`**（来自 P2 本地 zip 的旧 main 拷贝），与真正的 `backend/`、`deploy/`、`frontend/` 并列存在。后果：仓库里出现两份工程，评审会认定为误提交，且后续 `git grep`、CI 路径匹配都可能被误导。
+
+处理：`git rm -r --cached SoftwareEngGroup4-main && git commit`，一次清理干净，不影响 `backend/` 等真实目录。
+
+---
+
+## 7. 请 P2 回的四个问题
 
 1. `feat/auth-rbac` 是否直接从 `feat/auth-foundation` 重切？现在这版带着删迁移的回退，不能合。
 2. `DataScopeService`（任务 3）本轮做不做？不做的话，"越权 → 10009"这条在验收里就是空的。
