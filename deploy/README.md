@@ -36,6 +36,6 @@ docker compose --profile app up -d --build
 
 - `etcd` 是 Milvus 的元数据存储，不对外暴露端口，只在 compose 内网用。
 - Milvus 的向量数据落在 `minio` 的 bucket 里，卷是 `milvus_data`。
-- MySQL 挂了 `../backend/src/main/resources/db` 做初始化；后端自己也有 `spring.sql.init`，
-  两条路都是幂等的，坏一条不影响建表。
+- MySQL 容器不再直接执行建表脚本。后端启动时由 Flyway 执行
+  `backend/src/main/resources/db/migration`，空库和已有非空库使用同一套版本记录。
 - `.env` 已被 `.gitignore` 忽略，**不要提交**。

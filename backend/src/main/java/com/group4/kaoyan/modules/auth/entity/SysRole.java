@@ -14,7 +14,7 @@ public class SysRole {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** ADMIN / STUDENT */
+    /** STUDENT / CONTENT_OPERATOR / DATA_AUDITOR / SYSTEM_ADMIN */
     private String roleCode;
 
     private String roleName;

@@ -24,7 +24,7 @@
 1. 启动 Docker Desktop
 2. 进入 deploy，复制 .env.example 为 .env
 3. 执行 docker compose up -d
-4. 进入 backend，执行 mvn spring-boot:run
+4. 进入 backend，执行 mvn spring-boot:run；Flyway 会自动建表或升级数据库
 5. 进入 frontend，执行 npm install 和 npm run dev
 
 ## 访问地址

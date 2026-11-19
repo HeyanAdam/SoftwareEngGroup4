@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.group4.kaoyan.common.BizException;
 import com.group4.kaoyan.common.R.PageData;
+import com.group4.kaoyan.modules.auth.RbacConstants;
 import com.group4.kaoyan.modules.auth.entity.SysPermission;
 import com.group4.kaoyan.modules.auth.entity.SysRole;
 import com.group4.kaoyan.modules.auth.mapper.PermissionMapper;
@@ -21,9 +22,6 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class AdminService {
-
-    /** 管理员角色码，与 RbacInitializer 保持一致 */
-    private static final String ROLE_ADMIN = "ADMIN";
 
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
@@ -56,11 +54,13 @@ public class AdminService {
             throw new BizException("用户不存在");
         }
         // 兜底：不能把系统里最后一个管理员降权，否则谁都没法再进后台
-        boolean targetIsAdmin = roleMapper.selectRoleCodesByUserId(userId).contains(ROLE_ADMIN);
+        boolean targetIsAdmin = roleMapper.selectRoleCodesByUserId(userId)
+                .contains(RbacConstants.ROLE_SYSTEM_ADMIN);
         boolean keepAdmin = roleIds != null && roleIds.stream()
                 .map(roleMapper::selectById)
-                .anyMatch(r -> r != null && ROLE_ADMIN.equals(r.getRoleCode()));
-        if (targetIsAdmin && !keepAdmin && roleMapper.countUsersWithRoleCode(ROLE_ADMIN) <= 1) {
+                .anyMatch(r -> r != null && RbacConstants.ROLE_SYSTEM_ADMIN.equals(r.getRoleCode()));
+        if (targetIsAdmin && !keepAdmin
+                && roleMapper.countUsersWithRoleCode(RbacConstants.ROLE_SYSTEM_ADMIN) <= 1) {
             throw new BizException("这是当前唯一的系统管理员，不能降权；请先把其他用户提权");
         }
         roleMapper.unbindUserRoles(userId);
