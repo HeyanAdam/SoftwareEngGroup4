@@ -7,6 +7,7 @@ import com.group4.kaoyan.modules.user.dto.UserProfileDTO;
 import com.group4.kaoyan.modules.user.entity.UserProfile;
 import com.group4.kaoyan.modules.user.entity.UserStudyGoal;
 import com.group4.kaoyan.modules.user.service.UserProfileService;
+import com.group4.kaoyan.modules.user.service.UserService;
 import com.group4.kaoyan.platform.idempotency.Idempotent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -22,10 +23,13 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * 用户画像与备考目标（持久化到 user_profile / user_study_goal）。
+ * 用户画像与备考目标（对齐《接口设计文档 V1.1 适配版》第 4 章）。
  *
- * <p>与旧的 /api/user/profile 并存：旧接口维护 sys_user 的昵称/邮箱/头像，
- * 这里只管画像与目标，互不影响。</p>
+ * <p>路径统一到 /api/v1/user 下：profile 与 study-goals；旧的 /api/user/profile
+ * 与 /goals 已迁移（P2 D 项）。本类接管原 UserController 的资料读写，
+ * 避免 /api/v1/user/profile 出现双重映射、Spring 启动时 ambiguous mapping。</p>
+ *
+ * <p>权限：登录用户本人（文档 4.1“权限：登录用户本人”），故不挂权限码，只做登录态校验。</p>
  */
 @RestController
 @RequestMapping("/api/v1/user")
@@ -33,34 +37,43 @@ import java.util.List;
 public class UserProfileController {
 
     private final UserProfileService profileService;
+    private final UserService userService;
 
     @GetMapping("/profile")
     public R<UserProfile> profile() {
         return R.ok(profileService.getProfile(currentUserId()));
     }
 
+    /** 文档 4.2：nickname / email / avatar_url 与画像字段可在同一个 body 里提交。 */
     @PutMapping("/profile")
     public R<UserProfile> saveProfile(@RequestBody UserProfileDTO dto) {
-        return R.ok(profileService.saveProfile(currentUserId(), dto));
+        Long userId = currentUserId();
+        if (dto != null
+                && (dto.nickname() != null || dto.email() != null || dto.avatarUrl() != null)) {
+            userService.updateProfile(dto.nickname(), dto.email(), dto.avatarUrl());
+        }
+        return R.ok(profileService.saveProfile(userId, dto));
     }
 
-    @GetMapping("/goals")
+    /** 文档 4.3：GET /api/v1/user/study-goals?exam_year=。 */
+    @GetMapping("/study-goals")
     public R<List<UserStudyGoal>> goals(@RequestParam(required = false) Integer status) {
         return R.ok(profileService.listGoals(currentUserId(), status));
     }
 
+    /** 文档 4.4 为集合式全量保存，这里等价实现为“该年度不存在则新增”，效果一致。 */
     @Idempotent
-    @PostMapping("/goals")
+    @PostMapping("/study-goals")
     public R<UserStudyGoal> createGoal(@RequestBody StudyGoalDTO dto) {
         return R.ok(profileService.createGoal(currentUserId(), dto));
     }
 
-    @PutMapping("/goals/{id}")
+    @PutMapping("/study-goals/{id}")
     public R<UserStudyGoal> updateGoal(@PathVariable Long id, @RequestBody StudyGoalDTO dto) {
         return R.ok(profileService.updateGoal(currentUserId(), id, dto));
     }
 
-    @DeleteMapping("/goals/{id}")
+    @DeleteMapping("/study-goals/{id}")
     public R<Void> deleteGoal(@PathVariable Long id) {
         profileService.deleteGoal(currentUserId(), id);
         return R.ok();

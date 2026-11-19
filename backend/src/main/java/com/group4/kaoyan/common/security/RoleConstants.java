@@ -68,8 +68,10 @@ public final class RoleConstants {
     /**
      * 内置角色矩阵（与 main 分支 V6 种子一致）。
      *
-     * <p>STUDENT 只给 {@code chat:send}：接口文档 11.5 规定普通学生不得直接浏览知识库原文、切片与向量。
-     * 学习计划、题库、文件的 9 条权限码属于新增业务域，先给 SYSTEM_ADMIN，学生的授权待评审。</p>
+     * <p>STUDENT 给 {@code chat:send} 与 4 条 {@code file:*}：接口文档第 10 章把上传/下载/删除文件
+     * 定义为学生可用功能（10.1 权限列为 file:upload / file:view / file:download / file:delete），
+     * 归属范围仍由 DataScope SELF 与 FileService 的 userId 校验兜住，学生只能动自己的文件。
+     * 知识库原文与向量不给学生（文档 11.5 规定普通学生不得直接浏览知识库原文、切片与向量）。</p>
      */
     public static final List<RoleDef> BUILTIN_ROLES = List.of(
             new RoleDef(SYSTEM_ADMIN, "系统管理员",
@@ -77,8 +79,10 @@ public final class RoleConstants {
                     true, List.of(), DataScope.ALL),
 
             new RoleDef(STUDENT, "学生",
-                    "默认注册角色，只能问答",
-                    false, List.of(CHAT_SEND), DataScope.SELF),
+                    "默认注册角色，可问答、可管理本人文件",
+                    false,
+                    List.of(CHAT_SEND, FILE_VIEW, FILE_UPLOAD, FILE_DOWNLOAD, FILE_DELETE),
+                    DataScope.SELF),
 
             new RoleDef(CONTENT_OPERATOR, "内容运营",
                     "维护知识库、文档和向量索引",

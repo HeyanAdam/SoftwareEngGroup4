@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.crypto.digest.BCrypt;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.group4.kaoyan.common.BizException;
+import com.group4.kaoyan.modules.auth.service.SessionService;
 import com.group4.kaoyan.modules.user.entity.SysUser;
 import com.group4.kaoyan.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ import java.time.LocalDateTime;
 public class UserService {
 
     private final UserMapper userMapper;
+    private final SessionService sessionService;
 
     public SysUser profile() {
         SysUser user = userMapper.selectById(StpUtil.getLoginIdAsLong());
@@ -54,6 +56,8 @@ public class UserService {
         update.setPasswordHash(BCrypt.hashpw(newPassword));
         update.setUpdateTime(LocalDateTime.now());
         userMapper.updateById(update);
+        // 改密后吊销该账号全部会话，与「重置密码后旧 Token 全量失效」保持同一口径（P2 改造清单 C 项）
+        sessionService.logoutUser(user.getId());
     }
 
     /** 供其他模块按登录名查用户，避免各处重复拼条件 */

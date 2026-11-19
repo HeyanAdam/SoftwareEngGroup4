@@ -28,7 +28,7 @@ import java.util.List;
  * 后台：用户 / 角色 / 权限管理（RBAC 的维护入口）。
  */
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/v1/admin")
 @RequiredArgsConstructor
 public class AdminController {
 

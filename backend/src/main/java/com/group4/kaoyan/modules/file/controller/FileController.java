@@ -1,7 +1,9 @@
 package com.group4.kaoyan.modules.file.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.group4.kaoyan.common.R;
+import com.group4.kaoyan.common.security.PermissionConstants;
 import com.group4.kaoyan.common.web.RequestContext;
 import com.group4.kaoyan.modules.audit.annotation.AuditLog;
 import com.group4.kaoyan.modules.file.entity.FileObject;
@@ -45,6 +47,7 @@ public class FileController {
 
     // ============ 小文件 ============
 
+    @SaCheckPermission(PermissionConstants.FILE_UPLOAD)
     @AuditLog(module = "file", action = "UPLOAD", resourceType = "FILE")
     @PostMapping
     public R<FileObject> upload(@RequestParam("file") MultipartFile file,
@@ -52,6 +55,7 @@ public class FileController {
         return R.ok(fileService.upload(userId(), scene, file));
     }
 
+    @SaCheckPermission(PermissionConstants.FILE_UPLOAD)
     @AuditLog(module = "file", action = "UPLOAD_BATCH", resourceType = "FILE")
     @PostMapping("/upload")
     public R<List<FileObject>> uploadBatch(@RequestPart("files") MultipartFile[] files,
@@ -59,6 +63,7 @@ public class FileController {
         return R.ok(fileService.uploadBatch(userId(), scene, files));
     }
 
+    @SaCheckPermission(PermissionConstants.FILE_UPLOAD)
     @PostMapping("/batch")
     public R<List<FileObject>> batch(@RequestBody IdsReq req) {
         return R.ok(fileService.batch(userId(), req.fileIds()));
@@ -67,6 +72,7 @@ public class FileController {
     // ============ 分片 ============
 
     @Idempotent
+    @SaCheckPermission(PermissionConstants.FILE_UPLOAD)
     @AuditLog(module = "file", action = "INIT_UPLOAD_SESSION", resourceType = "FILE")
     @PostMapping("/upload-sessions")
     public R<FileUploadSession> initSession(@RequestBody InitSessionReq req) {
@@ -75,11 +81,13 @@ public class FileController {
                 req.contentType(), req.partSize(), req.fileHash(), req.scene())));
     }
 
+    @SaCheckPermission(PermissionConstants.FILE_UPLOAD)
     @GetMapping("/upload-sessions/{sessionId}")
     public R<FileUploadSession> session(@PathVariable Long sessionId) {
         return R.ok(fileService.getSession(userId(), sessionId));
     }
 
+    @SaCheckPermission(PermissionConstants.FILE_UPLOAD)
     @AuditLog(module = "file", action = "UPLOAD_PART", resourceType = "FILE")
     @PutMapping("/upload-sessions/{sessionId}/parts/{partNumber}")
     public R<FileUploadSession> uploadPart(@PathVariable Long sessionId,
@@ -90,6 +98,7 @@ public class FileController {
                 RequestContext.truncate(partHash, 64)));
     }
 
+    @SaCheckPermission(PermissionConstants.FILE_UPLOAD)
     @AuditLog(module = "file", action = "COMPLETE_UPLOAD_SESSION", resourceType = "FILE")
     @PostMapping("/upload-sessions/{sessionId}/complete")
     public R<FileObject> complete(@PathVariable Long sessionId,
@@ -97,6 +106,7 @@ public class FileController {
         return R.ok(fileService.complete(userId(), sessionId, scene));
     }
 
+    @SaCheckPermission(PermissionConstants.FILE_UPLOAD)
     @AuditLog(module = "file", action = "CANCEL_UPLOAD_SESSION", resourceType = "FILE")
     @DeleteMapping("/upload-sessions/{sessionId}")
     public R<Void> cancel(@PathVariable Long sessionId) {
@@ -106,6 +116,7 @@ public class FileController {
 
     // ============ 列表 / 下载 / 删除 ============
 
+    @SaCheckPermission(PermissionConstants.FILE_VIEW)
     @GetMapping
     public R<R.PageData<FileObject>> list(@RequestParam(required = false) String scene,
                                           @RequestParam(defaultValue = "1") long page,
@@ -113,12 +124,14 @@ public class FileController {
         return R.ok(fileService.list(userId(), scene, page, size));
     }
 
+    @SaCheckPermission(PermissionConstants.FILE_VIEW)
     @GetMapping("/{fileId}")
     public R<FileObject> detail(@PathVariable Long fileId) {
         return R.ok(fileService.getOwned(userId(), fileId));
     }
 
     /** 返回 60 分钟有效的预签名下载地址，不暴露 MinIO 内部地址与错误。 */
+    @SaCheckPermission(PermissionConstants.FILE_DOWNLOAD)
     @GetMapping("/{fileId}/content")
     public R<Map<String, Object>> content(@PathVariable Long fileId) {
         return R.ok(Map.of(
@@ -126,6 +139,7 @@ public class FileController {
                 "expiresInMinutes", 60));
     }
 
+    @SaCheckPermission(PermissionConstants.FILE_DELETE)
     @AuditLog(module = "file", action = "DELETE", resourceType = "FILE")
     @DeleteMapping("/{fileId}")
     public R<Void> delete(@PathVariable Long fileId) {

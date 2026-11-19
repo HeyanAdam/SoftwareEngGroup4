@@ -141,11 +141,14 @@ class PermissionCatalogTest {
     }
 
     @Test
-    @DisplayName("STUDENT 只有 chat:send：不得直接浏览知识库（接口文档 11.5）")
+    @DisplayName("STUDENT 只有 chat:send + 4 条 file:*：不得直接浏览知识库（接口文档 11.5）")
     void studentOnlyHasChatSend() {
         RoleConstants.RoleDef student = RoleConstants.find(RoleConstants.STUDENT).orElseThrow();
-        assertEquals(List.of(PermissionConstants.CHAT_SEND), student.defaultPermissions(),
-                "STUDENT 的官方授权只有 chat:send");
+        assertEquals(List.of(PermissionConstants.CHAT_SEND,
+                        PermissionConstants.FILE_VIEW, PermissionConstants.FILE_UPLOAD,
+                        PermissionConstants.FILE_DOWNLOAD, PermissionConstants.FILE_DELETE),
+                student.defaultPermissions(),
+                "STUDENT 的官方授权为 chat:send 与 4 条文件权限（接口文档 10.1）");
         assertEquals(DataScope.SELF, student.defaultDataScope(), "学生数据范围应为 SELF");
         assertFalse(student.defaultPermissions().contains(PermissionConstants.KB_VIEW),
                 "普通学生不得直接浏览知识库");
