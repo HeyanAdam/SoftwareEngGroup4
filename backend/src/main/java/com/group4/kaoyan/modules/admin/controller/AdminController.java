@@ -97,12 +97,14 @@ public class AdminController {
     }
 
     @SaCheckPermission("admin:role:update")
+    @AuditLog(module = "admin", action = "UPDATE_ROLE", resourceType = "ROLE")
     @PutMapping("/roles/{id}")
     public R<SysRole> updateRole(@PathVariable Long id, @RequestBody RoleUpdateReq req) {
         return R.ok(adminService.updateRole(id, req.roleName(), req.description()));
     }
 
     @SaCheckPermission("admin:role:update")
+    @AuditLog(module = "admin", action = "DELETE_ROLE", resourceType = "ROLE")
     @DeleteMapping("/roles/{id}")
     public R<Void> deleteRole(@PathVariable Long id) {
         adminService.deleteRole(id);
@@ -110,6 +112,7 @@ public class AdminController {
     }
 
     @SaCheckPermission("admin:user:update")
+    @AuditLog(module = "admin", action = "BIND_ROLE", resourceType = "USER")
     @PostMapping("/users/{userId}/roles/{roleId}")
     public R<Void> bindRole(@PathVariable Long userId, @PathVariable Long roleId) {
         adminService.bindRole(userId, roleId);
@@ -117,6 +120,7 @@ public class AdminController {
     }
 
     @SaCheckPermission("admin:user:update")
+    @AuditLog(module = "admin", action = "UNBIND_ROLE", resourceType = "USER")
     @DeleteMapping("/users/{userId}/roles/{roleId}")
     public R<Void> unbindRole(@PathVariable Long userId, @PathVariable Long roleId) {
         adminService.unbindRole(userId, roleId);

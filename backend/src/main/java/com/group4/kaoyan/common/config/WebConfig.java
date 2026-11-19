@@ -45,12 +45,16 @@ public class WebConfig implements WebMvcConfigurer {
             "/api/v1/health/**"
     };
 
-    /** 除白名单与健康检查接口外，/api/** 均需登录 */
+    /**
+     * 除白名单外，/api/** 一律先校验登录态，再由方法上的 @SaCheckPermission 校验权限码。
+     *
+     * <p>注意：不要再往这里加「业务路径放行」（历史上的 {@code /api/kb/**} 放行已删除）——
+     * 匿名可访问的接口只能由 {@link #PUBLIC_PATHS} 显式声明，否则新增接口忘加注解就等于裸奔。</p>
+     */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SaInterceptor(handler -> SaRouter.match("/api/**")
                         .notMatch(PUBLIC_PATHS)
-                        .notMatch("/api/kb", "/api/kb/**")
                         .check(r -> StpUtil.checkLogin())))
                 .addPathPatterns("/**");
         // 幂等拦截器排在登录校验之后，只对 @Idempotent 方法生效
