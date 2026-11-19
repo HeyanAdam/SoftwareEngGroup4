@@ -3,6 +3,9 @@ package com.group4.kaoyan.modules.admin.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.group4.kaoyan.common.R;
 import com.group4.kaoyan.modules.admin.service.AdminService;
+import com.group4.kaoyan.modules.audit.annotation.AuditLog;
+import com.group4.kaoyan.modules.audit.entity.LoginLog;
+import com.group4.kaoyan.modules.audit.service.LoginLogService;
 import com.group4.kaoyan.modules.auth.entity.SysPermission;
 import com.group4.kaoyan.modules.auth.entity.SysRole;
 import com.group4.kaoyan.modules.knowledge.service.KnowledgeService;
@@ -29,6 +32,7 @@ public class AdminController {
 
     private final AdminService adminService;
     private final KnowledgeService knowledgeService;
+    private final LoginLogService loginLogService;
 
     public record StatusReq(Integer status) {
     }
@@ -48,6 +52,7 @@ public class AdminController {
     }
 
     @SaCheckPermission("admin:user:update")
+    @AuditLog(module = "admin", action = "UPDATE_STATUS", resourceType = "USER")
     @PutMapping("/users/{id}/status")
     public R<Void> updateStatus(@PathVariable Long id, @RequestBody StatusReq req) {
         adminService.updateStatus(id, req.status());
@@ -55,6 +60,7 @@ public class AdminController {
     }
 
     @SaCheckPermission("admin:user:update")
+    @AuditLog(module = "admin", action = "ASSIGN_ROLES", resourceType = "USER")
     @PutMapping("/users/{id}/roles")
     public R<Void> assignRoles(@PathVariable Long id, @RequestBody IdsReq req) {
         adminService.assignRoles(id, req.ids());
@@ -74,6 +80,7 @@ public class AdminController {
     }
 
     @SaCheckPermission("admin:role:update")
+    @AuditLog(module = "admin", action = "CREATE_ROLE", resourceType = "ROLE")
     @PostMapping("/roles")
     public R<SysRole> createRole(@RequestBody RoleCreateReq req) {
         return R.ok(adminService.createRole(req.roleCode(), req.roleName(), req.description()));
@@ -86,6 +93,7 @@ public class AdminController {
     }
 
     @SaCheckPermission("admin:role:update")
+    @AuditLog(module = "admin", action = "ASSIGN_PERMISSIONS", resourceType = "ROLE")
     @PutMapping("/roles/{id}/permissions")
     public R<Void> assignPermissions(@PathVariable Long id, @RequestBody IdsReq req) {
         adminService.assignPermissions(id, req.ids());
@@ -97,8 +105,17 @@ public class AdminController {
      * 只有持有 admin:vector:manage 的管理员能调用，普通用户没有任何向量写入口。
      */
     @SaCheckPermission("admin:vector:manage")
+    @AuditLog(module = "admin", action = "REINDEX_VECTOR", resourceType = "KNOWLEDGE_BASE")
     @PostMapping("/vector/reindex/{kbId}")
     public R<Integer> reindex(@PathVariable Long kbId) {
         return R.ok(knowledgeService.reindexKnowledgeBase(kbId));
+    }
+
+    /** 登录日志排查入口：按账号查最近记录。 */
+    @SaCheckPermission("admin:user:list")
+    @GetMapping("/login-logs")
+    public R<List<LoginLog>> loginLogs(@RequestParam(required = false) String account,
+                                       @RequestParam(defaultValue = "20") int limit) {
+        return R.ok(loginLogService.recent(account, limit));
     }
 }
