@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.crypto.digest.BCrypt;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.group4.kaoyan.common.BizException;
+import com.group4.kaoyan.modules.auth.RbacConstants;
 import com.group4.kaoyan.modules.auth.entity.SysRole;
 import com.group4.kaoyan.modules.user.entity.SysUser;
 import com.group4.kaoyan.modules.auth.mapper.PermissionMapper;
@@ -21,9 +22,6 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
-
-    public static final String ROLE_STUDENT = "STUDENT";
-    public static final String ROLE_ADMIN = "ADMIN";
 
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
@@ -59,19 +57,19 @@ public class AuthService {
             return;
         }
         roleMapper.bindUserRole(user.getId(), role.getId());
-        if (ROLE_ADMIN.equals(role.getRoleCode())) {
+        if (RbacConstants.ROLE_SYSTEM_ADMIN.equals(role.getRoleCode())) {
             log.info("系统内暂无管理员，首个注册用户 {} 已自动成为管理员", user.getUsername());
         }
     }
 
     private SysRole resolveRegisterRole() {
-        if (roleMapper.countUsersWithRoleCode(ROLE_ADMIN) == 0) {
-            SysRole admin = findRole(ROLE_ADMIN);
+        if (roleMapper.countUsersWithRoleCode(RbacConstants.ROLE_SYSTEM_ADMIN) == 0) {
+            SysRole admin = findRole(RbacConstants.ROLE_SYSTEM_ADMIN);
             if (admin != null) {
                 return admin;
             }
         }
-        return findRole(ROLE_STUDENT);
+        return findRole(RbacConstants.ROLE_STUDENT);
     }
 
     private SysRole findRole(String roleCode) {

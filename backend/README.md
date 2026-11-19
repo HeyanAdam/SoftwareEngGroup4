@@ -43,15 +43,15 @@ backend/
 
 ```
 backend/
-├── env/                                环境变量文件
-│   ├── .env.example                    复制为 env/.env 使用（已被 .gitignore 忽略）
-│   └── README.md
 └── src/main/resources/
     ├── config/
     │   ├── application.yml             Spring Boot 默认会读 classpath:/config/
     │   ├── application-dev.yml
     │   └── application-prod.yml
-    ├── db/schema.sql                   建表脚本（compose 首次启动自动执行）
+    ├── db/migration/                   Flyway 版本化迁移，唯一建表入口
+    │   ├── V1__baseline_existing_tables.sql
+    │   ├── V2__user_profile_and_goal.sql
+    │   └── V3__idempotency_and_audit.sql
     └── prompts/rag-system.txt          Prompt 模板
 ```
 
@@ -81,10 +81,9 @@ docker compose --profile app up -d --build
 
 ## 本地启动
 
-1. 确认 `deploy/.env` 存在（见上一节），填好两个模型 Key；想用自己的 Key 又不影响别人时，
-   复制 `backend/env/.env.example` 为 `backend/env/.env` 只写覆盖项。
-2. **建表不用手动做**：`spring.sql.init` 每次启动执行 `src/main/resources/db/schema.sql`
-   （全 `CREATE TABLE IF NOT EXISTS`，可重复执行）。
+1. 确认 `deploy/.env` 存在（见上一节），填好两个模型 Key。全项目只维护这一份环境配置。
+2. **建表不用手动做**：后端启动时由 Flyway 按版本执行 `src/main/resources/db/migration`。
+   `spring.sql.init.mode=never`，旧的 `db/schema.sql` 已移除。
 3. 直接启动，无需手工设环境变量：
 
 ```powershell
@@ -95,22 +94,33 @@ mvn spring-boot:run
 > `./deploy/.env`。两种路径都已配置。
 
 4. 访问 http://localhost:8080/swagger-ui.html（dev 环境开启）。
-5. 启动时只补 RBAC 字典（角色 ADMIN/STUDENT、11 条权限码），**不预置任何账号**。管理员是
+5. Flyway V6 初始化四个角色（`STUDENT`、`CONTENT_OPERATOR`、`DATA_AUDITOR`、`SYSTEM_ADMIN`）
+   和 11 条权限码，`RbacInitializer` 只校验不写库，**不预置任何账号**。管理员是
    “第一个注册的人”：`POST /api/auth/register` 注册成功后，如果库里还没有管理员，这个用户
-   直接拿到 ADMIN；之后注册的一律是 STUDENT，需要管理员在后台提权。
+   直接拿到 `SYSTEM_ADMIN`；之后注册的一律是 `STUDENT`，需要管理员在后台提权。
+
+数据库结构已经覆盖 V1-V6。后续变更必须新增 `V7__...sql` 等迁移文件，禁止修改已经合并的 V1-V6。
+空库和已有非空库都通过 `baseline-on-migrate` 从版本 0 接入；`clean-disabled=true` 防止误清库。
 
 ## 账号与权限的初始化流程
 
 | 步骤 | 发生什么 | 持久化 |
 | --- | --- | --- |
-| 首次启动 | 建角色 `ADMIN` / `STUDENT`、11 条权限码；角色只在**第一次创建**时写入默认权限 | 落 MySQL，后续启动只读不写 |
-| 第一次注册 | 库里没有 ADMIN 用户 → 该用户自动成为管理员（只发生一次） | `sys_user_role` 记录，重启不丢 |
+| 首次启动 | Flyway V6 写入四个角色、11 条权限码和默认绑定；Java 启动器只做完整性校验 | 落 MySQL，后续启动不重复写入 |
+| 第一次注册 | 库里没有 `SYSTEM_ADMIN` 用户 → 该用户自动成为管理员（只发生一次） | `sys_user_role` 记录，重启不丢 |
 | 之后注册 | 一律 `STUDENT`，只有 `chat:send` | 同上 |
 | 提权 / 降权 | 管理员调 `PUT /api/admin/users/{id}/roles` 改用户的角色 | 同上 |
 | 调权限 | 管理员调 `PUT /api/admin/roles/{id}/permissions` 改角色拥有的权限码 | 同上 |
 
-重启不会被覆盖：`RbacInitializer` 只补“缺的东西”（缺的权限码、缺的角色），已存在的角色权限与
-用户角色绑定一律不动，所以控制台里改过的配置可以一直用下去。
+| 角色 | V6 默认能力 |
+| --- | --- |
+| `SYSTEM_ADMIN` | 全部权限 |
+| `CONTENT_OPERATOR` | 知识库、文档和向量维护 |
+| `DATA_AUDITOR` | 用户、角色和知识库只读 |
+| `STUDENT` | 仅 `chat:send` |
+
+重启不会被覆盖：RBAC 种子只由 Flyway V6 执行一次；`RbacInitializer` 只检查必填角色、权限和绑定，
+不写库，所以控制台里改过的增删权限不会被启动过程还原。
 
 唯一管理员不能被降权：`AdminService.assignRoles` 会拦下来（否则谁都没法再进后台），要换管理员
 请先把新管理员提权。
@@ -148,7 +158,7 @@ mvn spring-boot:run
 
 ## 权限模型：管理员管理 RAG 库，普通用户只能“用”数据
 
-| 能力 | ADMIN | STUDENT（普通用户） |
+| 能力 | SYSTEM_ADMIN | STUDENT（普通用户） |
 | --- | --- | --- |
 | 问答（内部检索向量、拿切片当依据） | ✅ | ✅（唯一入口，`chat:send`） |
 | 引用信息（文档名 / 文档 id / 切片 id / 相似度 / 摘要） | ✅ | ❌ 返回空数组 |
@@ -162,8 +172,8 @@ mvn spring-boot:run
 
 实现上做了四层，缺一层都可能漏：
 
-1. **权限码**：`kb:view`、`kb:create`、`kb:delete`、`doc:upload`、`doc:delete`、`admin:*` 只授予
-   ADMIN；STUDENT 只有 `chat:send`。所有 `/api/kb`、`/api/doc` 接口都会被拦在 403。
+1. **权限码**：`SYSTEM_ADMIN` 拥有全部权限；`CONTENT_OPERATOR` 负责知识库、文档和向量；
+   `DATA_AUDITOR` 只读；`STUDENT` 只有 `chat:send`。没有对应权限的请求在 Controller 层直接 403。
 2. **服务层**：`KnowledgeService` 的读方法（列表 / 详情 / 文档列表 / 原文）与写方法一律先
    `requireAdmin(...)`，权限码被误配时也不会漏。
 3. **检索侧**：普通用户不认 `kbId`（传了也忽略），统一按“公开库 `kb_id` 集合”检索；管理员才按指定
@@ -171,8 +181,8 @@ mvn spring-boot:run
 4. **输出侧**：`references` 事件与落库的 `references_json` 按角色分级——普通用户直接返回空数组
    `[]`（连文档名都不给），管理员才有 `docName / docId / chunkId / score / snippet`。
 
-`STUDENT` 是内置的默认注册角色，初始权限就是 `chat:send`。它的权限只在**角色第一次创建**时
-写入，之后完全以数据库为准——管理员在后台加或减权限，重启都不会被还原。
+`STUDENT` 是内置的默认注册角色，初始权限就是 `chat:send`。种子只在 V6 首次执行时写入，
+之后完全以数据库为准——管理员在后台加或减权限，重启都不会被还原。
 
 ## SSE 事件约定（POST /api/chat/stream）
 
