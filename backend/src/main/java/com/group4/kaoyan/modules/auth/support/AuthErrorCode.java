@@ -25,13 +25,22 @@ public final class AuthErrorCode {
     public static final int USER_NOT_FOUND = 10007;
     /** 无接口访问权限（403） */
     public static final int FORBIDDEN = 10008;
+    /** 无权访问该数据（403）：数据范围 / 越权访问他人资源，P2 的 DataScope 使用 */
+    public static final int DATA_SCOPE_DENIED = 10009;
     /** 操作过于频繁（429） */
     public static final int TOO_MANY_REQUESTS = 10010;
     /** 幂等键对应请求仍在处理中（409） */
     public static final int IDEMPOTENCY_IN_PROGRESS = 10011;
-    /** 请求类型不受支持（405） */
+    /** 请求类型不受支持（400） */
     public static final int UNSUPPORTED_REQUEST = 10012;
-    /** 服务器内部异常（500） */
+    /**
+     * 账号已被禁用（403）。
+     *
+     * <p>接口文档 V1.1 第 2.1 节的认证码只到 10012，没有「禁用」这一项，
+     * 这里按 10000-10012 的连续区间取 10013，已写进交接说明第 10 节，待文档负责人确认。</p>
+     */
+    public static final int ACCOUNT_DISABLED = 10013;
+    /** 服务器内部异常（500）：含依赖不可用（如邮件服务发不出去时用 503） */
     public static final int SERVER_ERROR = 90000;
 
     private AuthErrorCode() {

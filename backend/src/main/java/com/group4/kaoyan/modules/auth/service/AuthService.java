@@ -4,12 +4,12 @@ import cn.dev33.satoken.SaManager;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.crypto.digest.BCrypt;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.group4.kaoyan.modules.auth.RbacConstants;
+import com.group4.kaoyan.common.security.RbacSnapshotCache;
+import com.group4.kaoyan.common.security.RoleConstants;
 import com.group4.kaoyan.modules.auth.dto.LoginRequest;
 import com.group4.kaoyan.modules.auth.dto.PasswordResetRequest;
 import com.group4.kaoyan.modules.auth.dto.RegisterRequest;
 import com.group4.kaoyan.modules.auth.entity.SysRole;
-import com.group4.kaoyan.modules.auth.mapper.PermissionMapper;
 import com.group4.kaoyan.modules.auth.mapper.RoleMapper;
 import com.group4.kaoyan.modules.auth.service.IdempotencyService.Guard;
 import com.group4.kaoyan.modules.auth.support.AuthException;
@@ -53,7 +53,6 @@ public class AuthService {
 
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
-    private final PermissionMapper permissionMapper;
     private final UserProfileMapper userProfileMapper;
     private final CaptchaService captchaService;
     private final EmailCodeService emailCodeService;
@@ -61,6 +60,8 @@ public class AuthService {
     private final SessionService sessionService;
     private final LoginLogService loginLogService;
     private final IdempotencyService idempotencyService;
+    /** 权限快照缓存：与 StpInterfaceImpl 共用，保证「登录返回的角色权限」和「注解鉴权」口径一致 */
+    private final RbacSnapshotCache rbacSnapshotCache;
     private final TransactionTemplate transactionTemplate;
 
     // ==================== 登录 ====================
@@ -138,8 +139,9 @@ public class AuthService {
         vo.setUserId(user.getId());
         vo.setUsername(user.getUsername());
         vo.setNickname(user.getNickname());
-        vo.setRoles(roleMapper.selectRoleCodesByUserId(user.getId()));
-        vo.setPermissions(permissionMapper.selectPermCodesByUserId(user.getId()));
+        RbacSnapshotCache.Snapshot snapshot = rbacSnapshotCache.get(user.getId());
+        vo.setRoles(snapshot.roles());
+        vo.setPermissions(snapshot.permissions());
         vo.setHasProfile(userProfileMapper.countByUserId(user.getId()) > 0);
 
         loginLogService.record(user.getId(), user.getUsername(), true, client, null);
@@ -199,11 +201,13 @@ public class AuthService {
         }
 
         // 接口文档 3.2：注册不得自动把第一个注册用户设为管理员，一律绑定 STUDENT
-        SysRole studentRole = findRole(RbacConstants.ROLE_STUDENT);
+        SysRole studentRole = findRole(RoleConstants.STUDENT);
         if (studentRole == null) {
-            log.warn("注册时未找到 STUDENT 角色，用户 {} 尚未绑定角色，请检查 Flyway V6 种子", username);
+            log.warn("注册时未找到 STUDENT 角色，用户 {} 尚未绑定角色，请检查 RbacInitializer", username);
         } else {
             roleMapper.bindUserRole(user.getId(), studentRole.getId());
+            // 新用户刚落库，清掉可能存在的空快照，避免首次鉴权拿着空权限
+            rbacSnapshotCache.evict(user.getId());
         }
 
         StpUtil.login(user.getId());
@@ -268,8 +272,9 @@ public class AuthService {
         vo.setUsername(user.getUsername());
         vo.setNickname(user.getNickname());
         vo.setEmailMasked(EmailMasker.mask(user.getEmail()));
-        vo.setRoles(roleMapper.selectRoleCodesByUserId(userId));
-        vo.setPermissions(permissionMapper.selectPermCodesByUserId(userId));
+        RbacSnapshotCache.Snapshot snapshot = rbacSnapshotCache.get(userId);
+        vo.setRoles(snapshot.roles());
+        vo.setPermissions(snapshot.permissions());
         vo.setHasProfile(userProfileMapper.countByUserId(userId) > 0);
         return vo;
     }
@@ -312,12 +317,12 @@ public class AuthService {
         return user.getStatus() != null && user.getStatus() == 0;
     }
 
-    /** 供 P2/P3 复用的权限快照查询：角色与权限码来自同一套 RBAC 表。 */
+    /** 供 P2/P3 复用的权限快照查询：与 StpInterfaceImpl 走同一份缓存。 */
     public List<String> permissionsOf(Long userId) {
-        return permissionMapper.selectPermCodesByUserId(userId);
+        return rbacSnapshotCache.get(userId).permissions();
     }
 
     public List<String> rolesOf(Long userId) {
-        return roleMapper.selectRoleCodesByUserId(userId);
+        return rbacSnapshotCache.get(userId).roles();
     }
 }

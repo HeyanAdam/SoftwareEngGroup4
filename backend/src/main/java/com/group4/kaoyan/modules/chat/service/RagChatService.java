@@ -4,7 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.group4.kaoyan.common.BizException;
 import com.group4.kaoyan.common.config.AiProperties;
-import com.group4.kaoyan.modules.auth.RbacConstants;
+import com.group4.kaoyan.common.security.RoleConstants;
 import com.group4.kaoyan.modules.chat.entity.ChatConversation;
 import com.group4.kaoyan.modules.chat.entity.ChatMessage;
 import com.group4.kaoyan.modules.knowledge.service.PromptTemplateLoader;
@@ -48,7 +48,7 @@ public class RagChatService {
         send(emitter, "meta", Map.of("conversationId", conv.getId(), "model", props.getLlm().getModel()));
         try {
             // 普通用户不认 kbId，只能检索公开库；管理员可指定库
-            Long filterKbId = StpUtil.hasRole(RbacConstants.ROLE_SYSTEM_ADMIN) ? conv.getKbId() : null;
+            Long filterKbId = StpUtil.hasRole(RoleConstants.SYSTEM_ADMIN) ? conv.getKbId() : null;
             List<RetrievalService.Retrieved> hits = retrievalService.retrieve(filterKbId, question);
             send(emitter, "references", toRefs(hits));
 
@@ -97,7 +97,7 @@ public class RagChatService {
      * 普通用户完全不可见（返回空数组），只能看到自然语言回答本身。
      */
     private List<Map<String, Object>> toRefs(List<RetrievalService.Retrieved> hits) {
-        if (!StpUtil.hasRole(RbacConstants.ROLE_SYSTEM_ADMIN)) {
+        if (!StpUtil.hasRole(RoleConstants.SYSTEM_ADMIN)) {
             return List.of();
         }
         List<Map<String, Object>> list = new ArrayList<>();

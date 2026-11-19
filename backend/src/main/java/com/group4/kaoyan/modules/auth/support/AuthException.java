@@ -55,7 +55,7 @@ public class AuthException extends RuntimeException {
     }
 
     public static AuthException disabled() {
-        return new AuthException(AuthErrorCode.FORBIDDEN, HttpStatus.FORBIDDEN, "账号已被禁用，请联系管理员");
+        return new AuthException(AuthErrorCode.ACCOUNT_DISABLED, HttpStatus.FORBIDDEN, "账号已被禁用，请联系管理员");
     }
 
     public static AuthException locked(long retryAfterSeconds) {

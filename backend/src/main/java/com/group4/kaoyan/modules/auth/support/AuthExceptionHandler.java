@@ -62,10 +62,10 @@ public class AuthExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, R.fail(AuthErrorCode.PARAM_INVALID, "缺少请求头 " + e.getHeaderName()), null);
     }
 
-    /** HTTP 方法不支持：405 + 10012。 */
+    /** HTTP 方法不支持：按接口文档 2.1 返回 400 + 10012。 */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<R<Void>> handleMethod(HttpRequestMethodNotSupportedException e) {
-        return build(HttpStatus.METHOD_NOT_ALLOWED, R.fail(AuthErrorCode.UNSUPPORTED_REQUEST, "请求类型不受支持"), null);
+        return build(HttpStatus.BAD_REQUEST, R.fail(AuthErrorCode.UNSUPPORTED_REQUEST, "请求类型不受支持"), null);
     }
 
     @ExceptionHandler(NotLoginException.class)
