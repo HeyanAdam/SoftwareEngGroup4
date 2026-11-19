@@ -29,12 +29,26 @@ public class WebConfig implements WebMvcConfigurer {
                 .maxAge(3600);
     }
 
-    /** 除登录注册与健康检查接口外，/api/** 均需登录 */
+    /**
+     * 匿名可访问的接口白名单。
+     * 认证模块只开放「验证码、注册、登录、重置密码」，/auth/me 与 /auth/logout 仍需登录。
+     * 健康检查保持公开（接口文档第 14 章）。
+     */
+    private static final String[] PUBLIC_PATHS = {
+            "/api/v1/auth/captcha",
+            "/api/v1/auth/verification-codes",
+            "/api/v1/auth/register",
+            "/api/v1/auth/login",
+            "/api/v1/auth/password-reset",
+            "/api/v1/health/**"
+    };
+
+    /** 除白名单与健康检查接口外，/api/** 均需登录 */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SaInterceptor(handler -> SaRouter.match("/api/**")
-                        .notMatch("/api/auth/login", "/api/auth/register")
-                        .notMatch("/api/v1/health/**")
+                        .notMatch(PUBLIC_PATHS)
+                        .notMatch("/api/kb", "/api/kb/**")
                         .check(r -> StpUtil.checkLogin())))
                 .addPathPatterns("/**");
     }

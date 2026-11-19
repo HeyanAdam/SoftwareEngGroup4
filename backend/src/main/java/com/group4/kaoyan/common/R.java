@@ -26,6 +26,15 @@ public class R<T> {
         return ok(null);
     }
 
+    /** 自定义成功提示，例如「注册成功」「验证码已发送」。 */
+    public static <T> R<T> ok(String message, T data) {
+        R<T> r = new R<>();
+        r.code = 0;
+        r.message = message;
+        r.data = data;
+        return r;
+    }
+
     public static <T> R<T> fail(int code, String message) {
         R<T> r = new R<>();
         r.code = code;

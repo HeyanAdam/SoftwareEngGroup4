@@ -56,6 +56,21 @@ spring:
       database: ${REDIS_DB:0}
       timeout: 5000
 
+  # ========== 邮件（本地 Mailpit：SMTP 1025 / 收信页面 8025） ==========
+  # 该段同时属于 P2 的 chore/platform-deps 范围，合并时保留一份即可
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_STARTTLS:false}
+
   # ============ RabbitMQ 配置 新增 ============
   rabbitmq:
     host: ${RABBITMQ_HOST:127.0.0.1}
@@ -90,8 +105,12 @@ sa-token:
   exclude-path:
     - /api/kb
     - /api/kb/**
-    - /api/auth/login
-    - /api/auth/register
+    - /api/v1/auth/captcha
+    - /api/v1/auth/verification-codes
+    - /api/v1/auth/register
+    - /api/v1/auth/login
+    - /api/v1/auth/password-reset
+    - /api/v1/health/**
 
 springdoc:
   api-docs:
@@ -125,6 +144,19 @@ kaoyan:
     chunk-size: ${CHUNK_SIZE:400}
     chunk-overlap: ${CHUNK_OVERLAP:80}
     history-rounds: ${HISTORY_ROUNDS:6}
+  # ========== 认证模块（P1）：验证码、锁定、限流、发件人 ==========
+  auth:
+    captcha-ttl: ${AUTH_CAPTCHA_TTL:5m}
+    captcha-max-attempts: ${AUTH_CAPTCHA_MAX_ATTEMPTS:3}
+    email-code-ttl: ${AUTH_EMAIL_CODE_TTL:5m}
+    email-code-interval: ${AUTH_EMAIL_CODE_INTERVAL:60s}
+    email-code-ip-interval: ${AUTH_EMAIL_CODE_IP_INTERVAL:60s}
+    email-code-max-attempts: ${AUTH_EMAIL_CODE_MAX_ATTEMPTS:5}
+    login-max-failures: ${AUTH_LOGIN_MAX_FAILURES:5}
+    login-lock-duration: ${AUTH_LOGIN_LOCK_DURATION:15m}
+    login-failure-window: ${AUTH_LOGIN_FAILURE_WINDOW:30m}
+    mail-from: ${MAIL_FROM:no-reply@kaoyan.local}
+    mail-subject-prefix: "[考研AI导学系统]"
 
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}

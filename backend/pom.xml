@@ -49,6 +49,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
+        <!-- ========== Spring Mail（邮箱验证码，本地连 Mailpit）==========
+             该依赖同样在 P2 chore/platform-deps 的清单内，合并时保留一份即可 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
         <!-- RabbitMQ AMQP Starter 适配SpringBoot3 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
