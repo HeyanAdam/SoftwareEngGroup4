@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Backend: KaoyanApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot">
-    <module name="backend" />
+    <module name="kaoyan-backend" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.group4.kaoyan.KaoyanApplication" />
     <option name="ACTIVE_PROFILES" value="dev" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/backend" />

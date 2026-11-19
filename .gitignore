@@ -19,9 +19,10 @@ logs/
 # ==========================================================================
 #  IDE：只保留团队共享的工程配置，个人文件一律忽略
 #  共享（入库）：.idea/.gitignore、misc.xml、modules.xml、vcs.xml、
-#                encodings.xml、compiler.xml、*.iml、runConfigurations/*.xml
+#                encodings.xml、compiler.xml、runConfigurations/*.xml
 #  个人（忽略）：workspace.xml、tasks.xml、usage.statistics.xml、shelf、
-#                jarRepositories.xml、dictionaries、dataSources、httpRequests 等
+#                jarRepositories.xml、dictionaries、dataSources、httpRequests、
+#                以及 IDEA 导入 Maven 时自动生成的 *.iml
 # ==========================================================================
 .vscode/
 .idea/*
@@ -31,11 +32,13 @@ logs/
 !.idea/vcs.xml
 !.idea/encodings.xml
 !.idea/compiler.xml
-!.idea/*.iml
 !.idea/runConfigurations/
 !.idea/runConfigurations/*.xml
 !.idea/codeStyles/
 !.idea/codeStyles/*.xml
+
+# IDEA 导入 Maven / Gradle 时自动生成的模块文件，不随仓库分发
+*.iml
 
 # 即使命中上面的白名单，以下个人文件仍然忽略
 .idea/workspace.xml
