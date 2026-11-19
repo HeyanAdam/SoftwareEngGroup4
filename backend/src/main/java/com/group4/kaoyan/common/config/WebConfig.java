@@ -3,10 +3,8 @@ package com.group4.kaoyan.common.config;
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpUtil;
-import com.baomidou.mybatisplus.annotation.DbType;
-import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
-import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
-import org.springframework.context.annotation.Bean;
+import com.group4.kaoyan.platform.idempotency.IdempotencyInterceptor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
@@ -14,9 +12,13 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.concurrent.ThreadPoolExecutor;
+import org.springframework.context.annotation.Bean;
 
 @Configuration
+@RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
+
+    private final IdempotencyInterceptor idempotencyInterceptor;
 
     /** 跨域：生产环境请把 allowedOrigins 收敛到实际前端域名 */
     @Override
@@ -37,13 +39,8 @@ public class WebConfig implements WebMvcConfigurer {
                         .notMatch("/api/v1/health/**")
                         .check(r -> StpUtil.checkLogin())))
                 .addPathPatterns("/**");
-    }
-
-    @Bean
-    public MybatisPlusInterceptor mybatisPlusInterceptor() {
-        MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
-        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
-        return interceptor;
+        // 幂等拦截器排在登录校验之后，只对 @Idempotent 方法生效
+        registry.addInterceptor(idempotencyInterceptor).addPathPatterns("/api/**");
     }
 
     /** 文档解析/向量化专用线程池 */

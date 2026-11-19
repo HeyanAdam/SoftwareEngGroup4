@@ -9,6 +9,7 @@ import com.group4.kaoyan.modules.auth.entity.SysRole;
 import com.group4.kaoyan.modules.user.entity.SysUser;
 import com.group4.kaoyan.modules.auth.mapper.PermissionMapper;
 import com.group4.kaoyan.modules.auth.mapper.RoleMapper;
+import com.group4.kaoyan.modules.audit.service.LoginLogService;
 import com.group4.kaoyan.modules.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,7 @@ public class AuthService {
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
     private final PermissionMapper permissionMapper;
+    private final LoginLogService loginLogService;
 
     /**
      * 注册即分配角色：库里还没有任何管理员时，第一个注册的人直接成为管理员（只发生一次）；
@@ -77,16 +79,25 @@ public class AuthService {
     }
 
     public LoginResult login(String username, String rawPassword) {
+        String account = username == null ? "" : username.trim();
         SysUser user = userMapper.selectOne(Wrappers.<SysUser>lambdaQuery()
-                .eq(SysUser::getUsername, username));
-        if (user == null || !BCrypt.checkpw(rawPassword, user.getPasswordHash())) {
+                .eq(SysUser::getUsername, account));
+        // 成功与失败都写登录日志；日志走独立事务 + 内部吞异常，不影响登录结果
+        if (user == null) {
+            loginLogService.record(null, account, false, "账号不存在");
+            throw new BizException(401, "用户名或密码错误");
+        }
+        if (user.getPasswordHash() == null || !BCrypt.checkpw(rawPassword, user.getPasswordHash())) {
+            loginLogService.record(user.getId(), account, false, "密码错误");
             throw new BizException(401, "用户名或密码错误");
         }
         if (user.getStatus() != null && user.getStatus() == 0) {
+            loginLogService.record(user.getId(), account, false, "账号已被禁用");
             throw new BizException(403, "账号已被禁用");
         }
         StpUtil.login(user.getId());
         String token = StpUtil.getTokenValue();
+        loginLogService.record(user.getId(), account, true, null);
         List<String> roles = roleMapper.selectRoleCodesByUserId(user.getId());
         List<String> perms = permissionMapper.selectPermCodesByUserId(user.getId());
         return new LoginResult(token, user.getId(), user.getUsername(), user.getNickname(), roles, perms);

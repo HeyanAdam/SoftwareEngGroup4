@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.file.mapper.UploadPartMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.modules.file.entity.FileUploadPart">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="part_number" property="partNumber"/>
+        <result column="part_size" property="partSize"/>
+        <result column="part_hash" property="partHash"/>
+        <result column="bucket_name" property="bucketName"/>
+        <result column="object_key" property="objectKey"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="upsertPart" parameterType="com.group4.kaoyan.modules.file.entity.FileUploadPart"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO file_upload_part
+            (session_id, part_number, part_size, part_hash, bucket_name, object_key,
+             status, create_time, update_time)
+        VALUES
+            (#{sessionId}, #{partNumber}, #{partSize}, #{partHash}, #{bucketName}, #{objectKey},
+             'UPLOADED', #{createTime}, #{updateTime})
+        ON DUPLICATE KEY UPDATE
+            part_size = VALUES(part_size),
+            part_hash = VALUES(part_hash),
+            bucket_name = VALUES(bucket_name),
+            object_key = VALUES(object_key),
+            status = 'UPLOADED',
+            update_time = VALUES(update_time)
+    </insert>
+
+    <select id="selectBySessionAndNumber" resultMap="BaseResultMap">
+        SELECT id, session_id, part_number, part_size, part_hash, bucket_name, object_key,
+               status, create_time, update_time
+        FROM file_upload_part
+        WHERE session_id = #{sessionId} AND part_number = #{partNumber}
+    </select>
+
+    <select id="selectBySession" resultMap="BaseResultMap">
+        SELECT id, session_id, part_number, part_size, part_hash, bucket_name, object_key,
+               status, create_time, update_time
+        FROM file_upload_part
+        WHERE session_id = #{sessionId}
+        ORDER BY part_number
+    </select>
+
+    <select id="countUploaded" resultType="int">
+        SELECT COUNT(*)
+        FROM file_upload_part
+        WHERE session_id = #{sessionId} AND status = 'UPLOADED'
+    </select>
+
+    <delete id="deleteBySession">
+        DELETE FROM file_upload_part WHERE session_id = #{sessionId}
+    </delete>
+</mapper>

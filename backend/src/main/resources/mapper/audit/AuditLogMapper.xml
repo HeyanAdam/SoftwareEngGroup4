@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.audit.mapper.AuditLogMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.modules.audit.entity.AuditLogRecord">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="module" property="module"/>
+        <result column="action" property="action"/>
+        <result column="resource_type" property="resourceType"/>
+        <result column="resource_id" property="resourceId"/>
+        <result column="request_id" property="requestId"/>
+        <result column="ip_address" property="ipAddress"/>
+        <result column="before_json" property="beforeJson"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="after_json" property="afterJson"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.modules.audit.entity.AuditLogRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_audit_log
+            (user_id, module, action, resource_type, resource_id, request_id,
+             ip_address, before_json, after_json, create_time)
+        VALUES
+            (#{userId}, #{module}, #{action}, #{resourceType}, #{resourceId}, #{requestId},
+             #{ipAddress},
+             #{beforeJson, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+             #{afterJson, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+             #{createTime})
+    </insert>
+
+    <select id="selectByModule" resultMap="BaseResultMap">
+        SELECT id, user_id, module, action, resource_type, resource_id, request_id,
+               ip_address, before_json, after_json, create_time
+        FROM sys_audit_log
+        <where>
+            <if test="module != null and module != ''">AND module = #{module}</if>
+            <if test="action != null and action != ''">AND action = #{action}</if>
+            <if test="from != null">AND create_time &gt;= #{from}</if>
+            <if test="to != null">AND create_time &lt;= #{to}</if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByModule" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_audit_log
+        <where>
+            <if test="module != null and module != ''">AND module = #{module}</if>
+            <if test="action != null and action != ''">AND action = #{action}</if>
+            <if test="from != null">AND create_time &gt;= #{from}</if>
+            <if test="to != null">AND create_time &lt;= #{to}</if>
+        </where>
+    </select>
+</mapper>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.audit.mapper.LoginLogMapper">
+
+    <insert id="insert" parameterType="com.group4.kaoyan.modules.audit.entity.LoginLog"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_login_log
+            (user_id, account, success, ip_address, user_agent, failure_reason, create_time)
+        VALUES
+            (#{userId}, #{account}, #{success}, #{ipAddress}, #{userAgent}, #{failureReason}, #{createTime})
+    </insert>
+
+    <select id="selectRecent"
+            resultType="com.group4.kaoyan.modules.audit.entity.LoginLog">
+        SELECT id, user_id, account, success, ip_address, user_agent, failure_reason, create_time
+        FROM sys_login_log
+        <where>
+            <if test="account != null and account != ''">account = #{account}</if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

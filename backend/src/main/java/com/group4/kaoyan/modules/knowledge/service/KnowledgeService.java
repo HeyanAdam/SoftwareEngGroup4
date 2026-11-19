@@ -10,9 +10,11 @@ import com.group4.kaoyan.modules.knowledge.mapper.ChunkMapper;
 import com.group4.kaoyan.modules.knowledge.mapper.DocumentMapper;
 import com.group4.kaoyan.modules.knowledge.mapper.KbMapper;
 import com.group4.kaoyan.platform.ai.vectorstore.VectorStore;
+import com.group4.kaoyan.platform.messaging.service.AsyncTaskService;
 import com.group4.kaoyan.platform.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -47,6 +49,11 @@ public class KnowledgeService {
     private final StorageService storageService;
     private final VectorStore vectorStore;
     private final DocumentProcessService documentProcessService;
+    private final AsyncTaskService asyncTaskService;
+
+    /** 文档解析是否走 Outbox + MQ；关闭时回退为本地异步线程（离线开发兜底）。 */
+    @Value("${kaoyan.mq.doc-parse-enabled:true}")
+    private boolean docParseEnabled;
 
     // ============ 知识库 ============
 
@@ -132,7 +139,7 @@ public class KnowledgeService {
         documentMapper.insert(doc);
 
         kbMapper.updateById(incDocCount(kbId, 1));
-        documentProcessService.process(doc.getId());
+        submitDocParse(doc);
         return doc;
     }
 
@@ -175,7 +182,7 @@ public class KnowledgeService {
         requireContentWrite("只有系统管理员或内容运营可以重建文档向量");
         KbDocument doc = getDocument(docId);
         resetDoc(docId);
-        documentProcessService.process(docId);
+        submitDocParse(doc);
         log.info("文档已提交重建：docId={}, kbId={}", docId, doc.getKbId());
     }
 
@@ -190,13 +197,23 @@ public class KnowledgeService {
                 .eq(KbDocument::getKbId, kbId));
         for (KbDocument doc : docs) {
             resetDoc(doc.getId());
-            documentProcessService.process(doc.getId());
+            submitDocParse(doc);
         }
         log.info("知识库重建已提交：kbId={}，文档数={}", kbId, docs.size());
         return docs.size();
     }
 
     // ============ 内部 ============
+
+    /** 文档解析入口：默认落任务 + Outbox 走 MQ；开关关闭时回退本地异步线程。 */
+    private void submitDocParse(KbDocument doc) {
+        if (!docParseEnabled) {
+            documentProcessService.process(doc.getId());
+            return;
+        }
+        asyncTaskService.createDocParseTask(doc.getUserId(), doc.getId(),
+                doc.getOriginalFilename(), doc.getObjectKey());
+    }
 
     private void resetDoc(Long docId) {
         vectorStore.deleteByDocId(docId);
