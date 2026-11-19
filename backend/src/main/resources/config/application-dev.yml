@@ -9,10 +9,10 @@ spring:
     password: kaoyan123
 
 minio:
-  endpoint: http://127.0.0.1:9000
-  access-key: minioadmin
-  secret-key: minioadmin
-  bucket-name: kaoyan-files
+  endpoint: ${MINIO_ENDPOINT:http://127.0.0.1:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket: ${MINIO_BUCKET:kaoyan-files}
 
 springdoc:
   api-docs:
