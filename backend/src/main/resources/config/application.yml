@@ -34,13 +34,20 @@ spring:
       maximum-pool-size: 10
       minimum-idle: 2
       connection-timeout: 30000
-  # 建表脚本幂等（CREATE TABLE IF NOT EXISTS），每次启动执行一次；
-  # 这样即使中间件用 deploy/ 里的 MySQL（没有 initdb 挂载）也能自动建表。
+      
+  # ========== 关闭旧的 SQL 初始化，交由 Flyway 接管 ==========
   sql:
     init:
-      mode: ${DB_INIT_MODE:always}
-      schema-locations: classpath:db/schema.sql
-      encoding: UTF-8
+      mode: never
+
+  # ========== Flyway 数据库迁移配置 ==========
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    clean-disabled: true
+    validate-on-migrate: true
 
   # ========== Redis 配置 ==========
   data:
