@@ -92,7 +92,7 @@ for ($i = 1; $i -le 25; $i++) {
 }
 
 Write-Host "`n复原：走后台接口改回 status=1（会主动失效守卫缓存）..." -ForegroundColor Yellow
-$fix = Http-Json 'PUT' "$Base/api/admin/users/$stuId/status" @{ Authorization = "Bearer $adminToken" } @{ status = 1 }
+$fix = Http-Json 'PUT' "$Base/api/v1/admin/users/$stuId/status" @{ Authorization = "Bearer $adminToken" } @{ status = 1 }
 Write-Host ("  PUT -> code={0} msg={1}" -f $fix.code, $fix.message)
 Start-Sleep -Seconds 1
 $after = Me $stuToken

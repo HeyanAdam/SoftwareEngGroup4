@@ -123,8 +123,8 @@ $ready = Http-Status 'GET' "$Base/api/v1/health/ready" $null
 Report '健康检查 /health/ready' '200 + mysql/redis/rabbitmq UP' "$($ready.Status)" ($ready.Status -eq 200) ''
 
 # ---------- 1. 未登录拦截 ----------
-$anon = Http-Status 'GET' "$Base/api/kb" $null
-Report '未登录访问 /api/kb' '401 + 10001' "$($anon.Status) $(($anon.Body | ConvertFrom-Json).code)" ($anon.Status -eq 401) '原先 /api/kb 有遗留放行，已删除'
+$anon = Http-Status 'GET' "$Base/api/v1/knowledge-bases" $null
+Report '未登录访问 /api/v1/knowledge-bases' '401 + 10001' "$($anon.Status) $(($anon.Body | ConvertFrom-Json).code)" ($anon.Status -eq 401) '原先 /api/kb 有遗留放行，已删除'
 
 # ---------- 2. 准备两个账号 ----------
 Ensure-User 'admin' 'admin@kaoyan.local' 'Admin@123456' '系统管理员'
@@ -152,19 +152,19 @@ $stuMe = Http-Status 'GET' "$Base/api/v1/auth/me" @{ Authorization = "Bearer $st
 $stuPerms = ($stuMe.Body | ConvertFrom-Json).data.permissions
 Report '学生 /auth/me 权限清单' '仅 chat:send' "$($stuPerms -join ',')" (($stuPerms.Count -eq 1) -and ($stuPerms[0] -eq 'chat:send')) ''
 
-$stuAdmin = Http-Status 'GET' "$Base/api/admin/users" @{ Authorization = "Bearer $stuToken" }
+$stuAdmin = Http-Status 'GET' "$Base/api/v1/admin/users" @{ Authorization = "Bearer $stuToken" }
 $stuAdminCode = try { ($stuAdmin.Body | ConvertFrom-Json).code } catch { $null }
 Report '学生调用后台接口' '403 + 10008' "$($stuAdmin.Status) code=$stuAdminCode" (($stuAdmin.Status -eq 403) -and ($stuAdminCode -eq 10008)) '真机可触发的 10008 路径'
 
-$admAdmin = Http-Status 'GET' "$Base/api/admin/users" @{ Authorization = "Bearer $adminToken" }
+$admAdmin = Http-Status 'GET' "$Base/api/v1/admin/users" @{ Authorization = "Bearer $adminToken" }
 Report '管理员调用后台接口' '200 + code=0' "$($admAdmin.Status)" ($admAdmin.Status -eq 200) '对照组'
 
 # ---------- 4. 审计落库 ----------
-$roleBefore = Http-Status 'GET' "$Base/api/admin/roles" @{ Authorization = "Bearer $adminToken" }
+$roleBefore = Http-Status 'GET' "$Base/api/v1/admin/roles" @{ Authorization = "Bearer $adminToken" }
 $auditorRole = ($roleBefore.Body | ConvertFrom-Json).data | Where-Object { $_.roleCode -eq 'DATA_AUDITOR' }
 $beforeCount = SqlNum "SELECT COUNT(*) FROM sys_audit_log"
 
-$upd = Http-Json 'PUT' "$Base/api/admin/roles/$($auditorRole.id)" @{ Authorization = "Bearer $adminToken" } @{ roleName = '数据审计员'; description = '只读查看用户、角色和知识库概览' }
+$upd = Http-Json 'PUT' "$Base/api/v1/admin/roles/$($auditorRole.id)" @{ Authorization = "Bearer $adminToken" } @{ roleName = '数据审计员'; description = '只读查看用户、角色和知识库概览' }
 Report '管理员改角色名（触发 @AuditLog）' 'code=0' "code=$($upd.code)" ($upd.code -eq 0) ''
 
 $afterCount = SqlNum "SELECT COUNT(*) FROM sys_audit_log"
@@ -175,7 +175,7 @@ Report '审计内容' 'UPDATE_ROLE / ROLE / request_id 非空' $lastAudit.Replac
 
 # ---------- 5. 禁用账号 ----------
 $stuId = SqlNum "SELECT id FROM sys_user WHERE username='student1'"
-Http-Json 'PUT' "$Base/api/admin/users/$stuId/status" @{ Authorization = "Bearer $adminToken" } @{ status = 0 } | Out-Null
+Http-Json 'PUT' "$Base/api/v1/admin/users/$stuId/status" @{ Authorization = "Bearer $adminToken" } @{ status = 0 } | Out-Null
 
 $disabledLogin = Login 'student1' 'Student@123456'
 Report '禁用后重新登录' '403 + 10013' "code=$($disabledLogin.code)" ($disabledLogin.code -eq 10013) ''
@@ -184,7 +184,7 @@ $oldToken = Http-Status 'GET' "$Base/api/v1/auth/me" @{ Authorization = "Bearer 
 Report '禁用后旧 token 失效' '401 + 10001' "$($oldToken.Status)" ($oldToken.Status -eq 401) 'AdminService 禁用时 evict 快照 + kickout'
 
 # 复原
-Http-Json 'PUT' "$Base/api/admin/users/$stuId/status" @{ Authorization = "Bearer $adminToken" } @{ status = 1 } | Out-Null
+Http-Json 'PUT' "$Base/api/v1/admin/users/$stuId/status" @{ Authorization = "Bearer $adminToken" } @{ status = 1 } | Out-Null
 Report '复原学生账号状态' 'status=1' '已复原' $true ''
 
 # ---------- 6. 已知缺口（不在本轮验收内） ----------
