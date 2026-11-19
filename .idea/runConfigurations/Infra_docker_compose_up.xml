@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Infra: docker compose up" type="docker-compose" factoryName="Docker-Compose">
+    <option name="COMPOSE_FILE_PATHS">
+      <list>
+        <option value="$PROJECT_DIR$/deploy/docker-compose.yml" />
+      </list>
+    </option>
+    <option name="OVERRIDE_COMPOSE_FILE" value="false" />
+    <option name="SERVICE_NAMES">
+      <list />
+    </option>
+    <method v="2" />
+  </configuration>
+</component>

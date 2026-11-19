@@ -1,7 +1,19 @@
 target/
 node_modules/
 dist/
+out/
 .env
-.idea/
 .vscode/
 *.log
+
+# IntelliJ IDEA：共享工程配置，clone 后可直接导入并启动
+.idea/*
+!.idea/.gitignore
+!.idea/misc.xml
+!.idea/modules.xml
+!.idea/vcs.xml
+!.idea/encodings.xml
+!.idea/compiler.xml
+!.idea/*.iml
+!.idea/runConfigurations/
+!.idea/runConfigurations/*.xml
