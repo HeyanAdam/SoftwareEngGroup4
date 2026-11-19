@@ -3,6 +3,7 @@ package com.group4.kaoyan.modules.knowledge.service;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.group4.kaoyan.common.BizException;
+import com.group4.kaoyan.modules.auth.RbacConstants;
 import com.group4.kaoyan.modules.knowledge.entity.KbDocument;
 import com.group4.kaoyan.modules.knowledge.entity.KbKnowledgeBase;
 import com.group4.kaoyan.modules.knowledge.mapper.ChunkMapper;
@@ -27,8 +28,9 @@ import java.util.UUID;
  * 知识库与文档。
  *
  * 权限模型：
- * - 写（建库、上传、删除、重解析、重建向量）：仅 ADMIN，接口层 @SaCheckPermission + 此处二次校验；
- * - 读（列表、详情、文档列表、问答检索）：ADMIN 全部；普通用户只能看 visibility=1 的公开库。
+ * - 写（建库、上传、删除、重解析、重建向量）：SYSTEM_ADMIN / CONTENT_OPERATOR，
+ *   接口层 @SaCheckPermission + 此处二次校验；
+ * - 读（列表、详情、文档列表、原文）：SYSTEM_ADMIN / CONTENT_OPERATOR / DATA_AUDITOR。
  * 这样普通用户永远不会触达 Milvus 的写操作。
  */
 @Slf4j
@@ -51,7 +53,7 @@ public class KnowledgeService {
     /** 建库：管理员操作，且默认设为公开，普通用户才能检索到 */
     @Transactional
     public KbKnowledgeBase create(String name, String description) {
-        requireAdmin("只有管理员可以创建知识库");
+        requireContentWrite("只有系统管理员或内容运营可以创建知识库");
         if (name == null || name.isBlank()) {
             throw new BizException("知识库名称不能为空");
         }
@@ -70,18 +72,19 @@ public class KnowledgeService {
 
     /** 列表：后台管理能力，仅管理员；普通用户只能通过问答使用数据，看不到库结构 */
     public List<KbKnowledgeBase> listKnowledgeBases() {
-        requireAdmin("普通用户不可浏览知识库");
+        requireContentRead("当前角色不可浏览知识库");
         return kbMapper.selectList(Wrappers.<KbKnowledgeBase>lambdaQuery()
                 .orderByDesc(KbKnowledgeBase::getId));
     }
 
     public KbKnowledgeBase getKnowledgeBase(Long id) {
+        requireContentRead("当前角色不可访问知识库");
         return requireKb(id);
     }
 
     @Transactional
     public void deleteKnowledgeBase(Long id) {
-        requireAdmin("只有管理员可以删除知识库");
+        requireContentWrite("只有系统管理员或内容运营可以删除知识库");
         KbKnowledgeBase kb = requireKb(id);
         List<KbDocument> docs = documentMapper.selectList(Wrappers.<KbDocument>lambdaQuery()
                 .eq(KbDocument::getKbId, kb.getId()));
@@ -100,7 +103,7 @@ public class KnowledgeService {
     // ============ 文档 ============
 
     public KbDocument upload(Long kbId, MultipartFile file) {
-        requireAdmin("只有管理员可以上传文档（会写入向量库）");
+        requireContentWrite("只有系统管理员或内容运营可以上传文档");
         KbKnowledgeBase kb = requireKb(kbId);
         if (file == null || file.isEmpty()) {
             throw new BizException("上传文件为空");
@@ -134,7 +137,7 @@ public class KnowledgeService {
     }
 
     public List<KbDocument> listDocuments(Long kbId) {
-        requireAdmin("普通用户不可浏览文档列表");
+        requireContentRead("当前角色不可浏览文档列表");
         requireKb(kbId);
         return documentMapper.selectList(Wrappers.<KbDocument>lambdaQuery()
                 .select(KbDocument::getId, KbDocument::getKbId, KbDocument::getOriginalFilename,
@@ -146,7 +149,7 @@ public class KnowledgeService {
 
     /** 详情含原文全文：仅管理员可见（普通用户拿不到库里的原文） */
     public KbDocument getDocument(Long docId) {
-        requireAdmin("普通用户不可查看文档原文");
+        requireContentRead("当前角色不可查看文档原文");
         KbDocument doc = documentMapper.selectById(docId);
         if (doc == null) {
             throw new BizException(404, "文档不存在");
@@ -156,7 +159,7 @@ public class KnowledgeService {
 
     @Transactional
     public void deleteDocument(Long docId) {
-        requireAdmin("只有管理员可以删除文档（会清理向量）");
+        requireContentWrite("只有系统管理员或内容运营可以删除文档");
         KbDocument doc = getDocument(docId);
         vectorStore.deleteByDocId(docId);
         if (doc.getObjectKey() != null) {
@@ -169,7 +172,7 @@ public class KnowledgeService {
 
     /** 重新解析单个文档：清掉旧切片与向量，回到 UPLOADED 再跑一次流水线 */
     public void reparse(Long docId) {
-        requireAdmin("只有管理员可以重建文档向量");
+        requireContentWrite("只有系统管理员或内容运营可以重建文档向量");
         KbDocument doc = getDocument(docId);
         resetDoc(docId);
         documentProcessService.process(docId);
@@ -181,7 +184,7 @@ public class KnowledgeService {
      * 不加 @Transactional：清理要先于异步任务可见，否则异步线程可能读到未提交状态。
      */
     public int reindexKnowledgeBase(Long kbId) {
-        requireAdmin("只有管理员可以重建知识库向量");
+        requireContentWrite("只有系统管理员或内容运营可以重建知识库向量");
         requireKb(kbId);
         List<KbDocument> docs = documentMapper.selectList(Wrappers.<KbDocument>lambdaQuery()
                 .eq(KbDocument::getKbId, kbId));
@@ -209,7 +212,6 @@ public class KnowledgeService {
 
     /** 知识库读取：仅管理员；普通用户没有任何浏览入口 */
     private KbKnowledgeBase requireKb(Long kbId) {
-        requireAdmin("普通用户不可访问知识库");
         KbKnowledgeBase kb = kbMapper.selectById(kbId);
         if (kb == null) {
             throw new BizException(404, "知识库不存在");
@@ -217,8 +219,15 @@ public class KnowledgeService {
         return kb;
     }
 
-    private void requireAdmin(String message) {
-        if (!isAdmin()) {
+    private void requireContentRead(String message) {
+        if (!hasAnyContentRole()) {
+            throw new BizException(403, message);
+        }
+    }
+
+    private void requireContentWrite(String message) {
+        if (!StpUtil.hasRole(RbacConstants.ROLE_SYSTEM_ADMIN)
+                && !StpUtil.hasRole(RbacConstants.ROLE_CONTENT_OPERATOR)) {
             throw new BizException(403, message);
         }
     }
@@ -237,7 +246,9 @@ public class KnowledgeService {
         return StpUtil.getLoginIdAsLong();
     }
 
-    private boolean isAdmin() {
-        return StpUtil.hasRole("ADMIN");
+    private boolean hasAnyContentRole() {
+        return StpUtil.hasRole(RbacConstants.ROLE_SYSTEM_ADMIN)
+                || StpUtil.hasRole(RbacConstants.ROLE_CONTENT_OPERATOR)
+                || StpUtil.hasRole(RbacConstants.ROLE_DATA_AUDITOR);
     }
 }
