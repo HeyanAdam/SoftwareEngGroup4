@@ -1,8 +1,11 @@
-# P2 验收脚本（RBAC / 接口安全 / 审计 / 日志）
+﻿# P2 验收脚本（RBAC / 接口安全 / 审计 / 日志）
 # 用法：在项目根目录 `pwsh -File tools\p2-acceptance.ps1`（需后端 8080 已启动、MySQL/Redis 已起）
 # 设计原则：只读取与最小写，结束前把改过的数据复原。
 
 $ErrorActionPreference = 'Stop'
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
+# Windows PowerShell 5.1 需要显式加载 System.Net.Http；PS7 已内置，失败也无妨
+try { Add-Type -AssemblyName System.Net.Http -ErrorAction Stop } catch {}
 $Base = 'http://localhost:8080'
 $JavaExe = 'C:\Program Files\JetBrains\IntelliJ IDEA 2025.2.1\jbr\bin\java.exe'
 $JdbcJar = "$env:USERPROFILE\.m2\repository\com\mysql\mysql-connector-j\8.3.0\mysql-connector-j-8.3.0.jar"
@@ -48,29 +51,37 @@ function Redis-Get($key) {
 function Redis-Set($key, $value, $ttl) { return Redis-Cmd @('SET', $key, $value, 'EX', "$ttl") }
 
 # ---------- HTTP 帮助函数 ----------
-# PowerShell 7：用 -SkipHttpErrorCheck，4xx/5xx 不再抛异常，直接拿到状态码与响应体
-function Http-Status($method, $url, $headers) {
+# 用 System.Net.Http.HttpClient：PowerShell 5.1 / 7 都能用，4xx/5xx 不抛异常，直接拿状态码与响应体
+function Invoke-Raw($method, $url, $headers, $body, $contentType) {
+    $client = New-Object System.Net.Http.HttpClient
+    $client.Timeout = [TimeSpan]::FromSeconds(15)
     try {
-        $p = @{ Uri = $url; Method = $method; SkipHttpErrorCheck = $true; TimeoutSec = 15 }
-        if ($headers) { $p.Headers = $headers }
-        $r = Invoke-WebRequest @p
-        return [pscustomobject]@{ Status = [int]$r.StatusCode; Body = $r.Content; Headers = $r.Headers }
+        $m = New-Object System.Net.Http.HttpMethod($method)
+        $req = New-Object System.Net.Http.HttpRequestMessage($m, $url)
+        if ($headers) { foreach ($k in $headers.Keys) { [void]$req.Headers.Add($k, [string]$headers[$k]) } }
+        if ($body) {
+            $req.Content = New-Object System.Net.Http.StringContent($body, [Text.Encoding]::UTF8, $contentType)
+        }
+        $resp = $client.SendAsync($req).GetAwaiter().GetResult()
+        $status = [int]$resp.StatusCode
+        $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        return [pscustomobject]@{ Status = $status; Body = $text }
     } catch {
-        return [pscustomobject]@{ Status = -1; Body = $_.Exception.Message; Headers = $null }
+        return [pscustomobject]@{ Status = -1; Body = $_.Exception.Message }
+    } finally {
+        $client.Dispose()
     }
 }
 
+function Http-Status($method, $url, $headers) {
+    return Invoke-Raw $method $url $headers $null $null
+}
+
 function Http-Json($method, $url, $headers, $bodyObj) {
-    $p = @{ Uri = $url; Method = $method; ContentType = 'application/json'; TimeoutSec = 15; SkipHttpErrorCheck = $true }
-    if ($headers) { $p.Headers = $headers }
-    if ($bodyObj) { $p.Body = ($bodyObj | ConvertTo-Json) }
-    try {
-        $r = Invoke-WebRequest @p
-        try { return ($r.Content | ConvertFrom-Json) }
-        catch { return [pscustomobject]@{ code = -1; message = $r.Content } }
-    } catch {
-        return [pscustomobject]@{ code = -1; message = $_.Exception.Message }
-    }
+    $json = if ($bodyObj) { $bodyObj | ConvertTo-Json } else { $null }
+    $raw = Invoke-Raw $method $url $headers $json 'application/json'
+    try { return ($raw.Body | ConvertFrom-Json) }
+    catch { return [pscustomobject]@{ code = -1; message = $raw.Body } }
 }
 
 function Login($account, $password) {
