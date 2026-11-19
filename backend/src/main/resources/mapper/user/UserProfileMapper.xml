@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.user.mapper.UserProfileMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.modules.user.entity.UserProfile">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="gender" property="gender"/>
+        <result column="major" property="major"/>
+        <result column="grade" property="grade"/>
+        <result column="base_level" property="baseLevel"/>
+        <result column="weekly_study_minutes" property="weeklyStudyMinutes"/>
+        <result column="weak_points_json" property="weakPointsJson"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="profile_json" property="profileJson"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, gender, major, grade, base_level, weekly_study_minutes,
+        weak_points_json, profile_json, create_time, update_time
+    </sql>
+
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_profile
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.modules.user.entity.UserProfile"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_profile
+            (user_id, gender, major, grade, base_level, weekly_study_minutes,
+             weak_points_json, profile_json, create_time, update_time)
+        VALUES
+            (#{userId}, #{gender}, #{major}, #{grade}, #{baseLevel}, #{weeklyStudyMinutes},
+             #{weakPointsJson, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+             #{profileJson, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+             #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="updateByUserId" parameterType="com.group4.kaoyan.modules.user.entity.UserProfile">
+        UPDATE user_profile
+        SET gender = #{gender},
+            major = #{major},
+            grade = #{grade},
+            base_level = #{baseLevel},
+            weekly_study_minutes = #{weeklyStudyMinutes},
+            weak_points_json = #{weakPointsJson, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+            profile_json = #{profileJson, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+            update_time = #{updateTime}
+        WHERE user_id = #{userId}
+    </update>
+</mapper>
