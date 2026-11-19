@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.platform.messaging.mapper.OutboxMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.platform.messaging.entity.MessageOutbox">
+        <id column="id" property="id"/>
+        <result column="event_id" property="eventId"/>
+        <result column="exchange_name" property="exchangeName"/>
+        <result column="routing_key" property="routingKey"/>
+        <result column="message_type" property="messageType"/>
+        <result column="biz_key" property="bizKey"/>
+        <result column="payload_json" property="payloadJson"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="status" property="status"/>
+        <result column="retry_count" property="retryCount"/>
+        <result column="next_retry_at" property="nextRetryAt"/>
+        <result column="last_error" property="lastError"/>
+        <result column="published_at" property="publishedAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, event_id, exchange_name, routing_key, message_type, biz_key, payload_json,
+        status, retry_count, next_retry_at, last_error, published_at, create_time, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.platform.messaging.entity.MessageOutbox"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_message_outbox
+            (event_id, exchange_name, routing_key, message_type, biz_key, payload_json,
+             status, retry_count, next_retry_at, last_error, published_at, create_time, update_time)
+        VALUES
+            (#{eventId}, #{exchangeName}, #{routingKey}, #{messageType}, #{bizKey},
+             #{payloadJson, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+             #{status}, 0, #{nextRetryAt}, NULL, NULL, #{createTime}, #{updateTime})
+    </insert>
+
+    <select id="selectPending" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sys_message_outbox
+        WHERE status IN ('PENDING', 'RETRY_WAIT')
+          AND (next_retry_at IS NULL OR next_retry_at &lt;= NOW())
+        ORDER BY id
+        LIMIT #{limit}
+    </select>
+
+    <update id="claim">
+        UPDATE sys_message_outbox
+        SET status = 'PUBLISHING',
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status IN ('PENDING', 'RETRY_WAIT')
+    </update>
+
+    <update id="markPublished">
+        UPDATE sys_message_outbox
+        SET status = 'PUBLISHED',
+            published_at = NOW(),
+            last_error = NULL,
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status = 'PUBLISHING'
+    </update>
+
+    <update id="markRetry">
+        UPDATE sys_message_outbox
+        SET status = 'RETRY_WAIT',
+            retry_count = retry_count + 1,
+            last_error = #{error},
+            next_retry_at = #{nextRetryAt},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status = 'PUBLISHING'
+    </update>
+
+    <update id="markFailed">
+        UPDATE sys_message_outbox
+        SET status = 'FAILED',
+            last_error = #{error},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status = 'PUBLISHING'
+    </update>
+
+    <update id="resetStuck">
+        UPDATE sys_message_outbox
+        SET status = 'RETRY_WAIT',
+            next_retry_at = NOW(),
+            last_error = 'PUBLISHING 超时，已复位',
+            update_time = NOW()
+        WHERE status = 'PUBLISHING'
+          AND update_time &lt; #{staleBefore}
+    </update>
+</mapper>

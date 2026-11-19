@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.platform.messaging.mapper.AsyncTaskMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.platform.messaging.entity.AsyncTask">
+        <id column="id" property="id"/>
+        <result column="task_no" property="taskNo"/>
+        <result column="task_type" property="taskType"/>
+        <result column="biz_type" property="bizType"/>
+        <result column="biz_id" property="bizId"/>
+        <result column="user_id" property="userId"/>
+        <result column="status" property="status"/>
+        <result column="progress" property="progress"/>
+        <result column="retry_count" property="retryCount"/>
+        <result column="payload_json" property="payloadJson"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="result_json" property="resultJson"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="error_message" property="errorMessage"/>
+        <result column="next_retry_at" property="nextRetryAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="finished_time" property="finishedTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, task_no, task_type, biz_type, biz_id, user_id, status, progress, retry_count,
+        payload_json, result_json, error_message, next_retry_at, create_time, update_time, finished_time
+    </sql>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.platform.messaging.entity.AsyncTask"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_async_task
+            (task_no, task_type, biz_type, biz_id, user_id, status, progress, retry_count,
+             payload_json, result_json, error_message, next_retry_at, create_time, update_time, finished_time)
+        VALUES
+            (#{taskNo}, #{taskType}, #{bizType}, #{bizId}, #{userId}, #{status}, #{progress}, 0,
+             #{payloadJson, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+             NULL, NULL, #{nextRetryAt}, #{createTime}, #{updateTime}, NULL)
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sys_async_task
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectLatestByBiz" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sys_async_task
+        WHERE biz_type = #{bizType} AND biz_id = #{bizId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sys_async_task
+        <where>
+            <if test="taskType != null and taskType != ''">AND task_type = #{taskType}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_async_task
+        <where>
+            <if test="taskType != null and taskType != ''">AND task_type = #{taskType}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+        </where>
+    </select>
+
+    <update id="markRunning">
+        UPDATE sys_async_task
+        SET status = 'RUNNING',
+            progress = #{progress},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status IN ('PENDING', 'RETRY_WAIT')
+    </update>
+
+    <update id="finish">
+        UPDATE sys_async_task
+        SET status = #{status},
+            progress = CASE WHEN #{status} = 'SUCCEEDED' THEN 100 ELSE progress END,
+            result_json = #{resultJson, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+            error_message = #{errorMessage},
+            finished_time = NOW(),
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status IN ('RUNNING', 'RETRY_WAIT', 'PENDING')
+    </update>
+
+    <update id="scheduleRetry">
+        UPDATE sys_async_task
+        SET status = 'RETRY_WAIT',
+            retry_count = retry_count + 1,
+            error_message = #{errorMessage},
+            next_retry_at = #{nextRetryAt},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status IN ('RUNNING', 'PENDING', 'RETRY_WAIT')
+    </update>
+
+    <update id="cancel">
+        UPDATE sys_async_task
+        SET status = 'CANCELLED',
+            finished_time = NOW(),
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status IN ('PENDING', 'RUNNING', 'RETRY_WAIT')
+    </update>
+
+    <select id="selectStaleRunning" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM sys_async_task
+        WHERE status = 'RUNNING'
+          AND update_time &lt; #{staleBefore}
+        ORDER BY id
+        LIMIT #{limit}
+    </select>
+
+    <update id="recover">
+        UPDATE sys_async_task
+        SET status = 'RETRY_WAIT',
+            next_retry_at = NOW(),
+            error_message = '任务超时未完成，已自动回收',
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status = 'RUNNING'
+    </update>
+</mapper>
