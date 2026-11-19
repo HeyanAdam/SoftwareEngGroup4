@@ -85,9 +85,15 @@ spring:
         acknowledge-mode: manual
 
 mybatis-plus:
+  # MP 的 mybatis-plus.* 就是 MyBatis 的配置入口，不要再加 mybatis.* 前缀（两者只生效一个）
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.group4.kaoyan.modules,com.group4.kaoyan.platform
+  type-handlers-package: com.group4.kaoyan.common.mybatis
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    default-statement-timeout: 30
+    jdbc-type-for-null: 'NULL'
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
   global-config:
     banner: false
     db-config:
@@ -157,6 +163,9 @@ kaoyan:
     login-failure-window: ${AUTH_LOGIN_FAILURE_WINDOW:30m}
     mail-from: ${MAIL_FROM:no-reply@kaoyan.local}
     mail-subject-prefix: "[考研AI导学系统]"
+  mq:
+    # false：文档解析回退为本地 @Async，不走 Outbox/MQ（离线开发兜底）
+    doc-parse-enabled: ${MQ_DOC_PARSE_ENABLED:true}
 
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}

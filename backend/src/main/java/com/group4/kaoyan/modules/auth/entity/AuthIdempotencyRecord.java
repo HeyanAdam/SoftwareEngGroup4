@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @TableName("sys_idempotency_record")
-public class IdempotencyRecord {
+public class AuthIdempotencyRecord {
 
     public static final int STATUS_PROCESSING = 0;
     public static final int STATUS_SUCCESS = 1;

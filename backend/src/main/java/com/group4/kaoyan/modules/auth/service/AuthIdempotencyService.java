@@ -3,8 +3,8 @@ package com.group4.kaoyan.modules.auth.service;
 import cn.hutool.crypto.digest.DigestUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.group4.kaoyan.modules.auth.entity.IdempotencyRecord;
-import com.group4.kaoyan.modules.auth.mapper.IdempotencyMapper;
+import com.group4.kaoyan.modules.auth.entity.AuthIdempotencyRecord;
+import com.group4.kaoyan.modules.auth.mapper.AuthIdempotencyMapper;
 import com.group4.kaoyan.modules.auth.support.AuthException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,13 +29,13 @@ import java.time.LocalDateTime;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class IdempotencyService {
+public class AuthIdempotencyService {
 
     /** 幂等记录保留 24 小时 */
     private static final Duration RECORD_TTL = Duration.ofHours(24);
     private static final int MAX_KEY_LENGTH = 128;
 
-    private final IdempotencyMapper idempotencyMapper;
+    private final AuthIdempotencyMapper AuthIdempotencyMapper;
     private final ObjectMapper objectMapper;
 
     /** 一次幂等请求的句柄；cachedResponseJson 不为空说明应直接返回上次结果。 */
@@ -50,33 +50,33 @@ public class IdempotencyService {
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
                 LocalDateTime now = LocalDateTime.now();
-                IdempotencyRecord record = new IdempotencyRecord();
+                AuthIdempotencyRecord record = new AuthIdempotencyRecord();
                 record.setUserId(userId);
                 record.setEndpoint(endpoint);
                 record.setIdempotencyKey(key);
                 record.setRequestHash(requestHash);
-                record.setStatus(IdempotencyRecord.STATUS_PROCESSING);
+                record.setStatus(AuthIdempotencyRecord.STATUS_PROCESSING);
                 record.setExpiresAt(now.plus(RECORD_TTL));
                 record.setCreateTime(now);
                 record.setUpdateTime(now);
-                idempotencyMapper.insertProcessing(record);
+                AuthIdempotencyMapper.insertProcessing(record);
                 return new Guard(record.getId(), null);
             } catch (DuplicateKeyException e) {
-                IdempotencyRecord existing = idempotencyMapper.selectByKey(userId, endpoint, key);
+                AuthIdempotencyRecord existing = AuthIdempotencyMapper.selectByKey(userId, endpoint, key);
                 if (existing == null) {
                     // 唯一键冲突后读不到记录，说明并发窗口里对方刚回滚，重试一次即可
                     continue;
                 }
-                int status = existing.getStatus() == null ? IdempotencyRecord.STATUS_PROCESSING : existing.getStatus();
-                if (status == IdempotencyRecord.STATUS_SUCCESS) {
+                int status = existing.getStatus() == null ? AuthIdempotencyRecord.STATUS_PROCESSING : existing.getStatus();
+                if (status == AuthIdempotencyRecord.STATUS_SUCCESS) {
                     log.info("命中幂等缓存: endpoint={}, key={}", endpoint, key);
                     return new Guard(existing.getId(), existing.getResponseJson());
                 }
-                if (status == IdempotencyRecord.STATUS_PROCESSING) {
+                if (status == AuthIdempotencyRecord.STATUS_PROCESSING) {
                     throw AuthException.idempotencyInProgress();
                 }
                 // 上一次处理失败，删掉占位记录后重新执行
-                idempotencyMapper.deleteById(existing.getId());
+                AuthIdempotencyMapper.deleteById(existing.getId());
             }
         }
         throw AuthException.idempotencyInProgress();
@@ -86,7 +86,7 @@ public class IdempotencyService {
         if (guard == null || guard.recordId() == null) {
             return;
         }
-        idempotencyMapper.updateResult(guard.recordId(), IdempotencyRecord.STATUS_SUCCESS,
+        AuthIdempotencyMapper.updateResult(guard.recordId(), AuthIdempotencyRecord.STATUS_SUCCESS,
                 responseCode, toJson(data), LocalDateTime.now());
     }
 
@@ -94,7 +94,7 @@ public class IdempotencyService {
         if (guard == null || guard.recordId() == null) {
             return;
         }
-        idempotencyMapper.updateResult(guard.recordId(), IdempotencyRecord.STATUS_FAILED,
+        AuthIdempotencyMapper.updateResult(guard.recordId(), AuthIdempotencyRecord.STATUS_FAILED,
                 null, null, LocalDateTime.now());
     }
 

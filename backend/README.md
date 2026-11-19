@@ -16,6 +16,64 @@ Spring Boot 3 + MyBatis-Plus + Sa-Token(RBAC) + Milvus + MinIO + 模型 API（Op
 | MinIO | 原始上传文件（PDF/DOCX/TXT） |
 | 模型 API | 对话 `/chat/completions`、向量 `/embeddings`，模型名可配 |
 
+## 持久化约定（原生 MyBatis）
+
+新加的持久化代码一律**原生 MyBatis**（Mapper 接口 + XML + 手写 SQL），与现有 MyBatis-Plus 代码共存：
+
+| 约定 | 说明 |
+| --- | --- |
+| 依赖 | 保留 `mybatis-plus-spring-boot3-starter`（它内含 MyBatis 核心），不换成 `mybatis-spring-boot-starter`，否则两套自动配置冲突 |
+| import | 新代码只用 `org.apache.ibatis.*`，禁止 `com.baomidou.mybatisplus.*` |
+| 配置入口 | `mybatis-plus.*` 就是 MyBatis 配置入口，不要再加 `mybatis.*`；XML 由 `mapper-locations: classpath*:mapper/**/*.xml` 加载 |
+| Mapper 位置 | 接口放 `<模块>/mapper`，XML 放 `resources/mapper/<模块>/<Entity>Mapper.xml`，`namespace` = 接口全限定名；接口方法与 XML 必须成对 |
+| 实体 | 不继承 MP 基类、不加 `@TableName/@TableId/@TableField`；实现 `TimedEntity`，时间戳由 `EntityTimestamps` 显式填充 |
+| JSON 列 | `JsonTypeHandler`（全局注册）或 XML 里显式 `typeHandler`；`List<String>` 用 `StringListTypeHandler` 显式指定 |
+| 分页 | 不引 PageHelper：`PageQuery` 算 offset，XML 写 `LIMIT #{offset}, #{size}` + 独立 count，pageSize 上限 100 |
+| 逻辑删除 / 乐观锁 | 手写：查询带 `deleted = 0`，删除走 `UPDATE ... SET deleted = 1`；乐观锁 `version = version + 1 ... AND version = #{version}`，影响 0 行返回 409 |
+| 事务 | service 写方法 `@Transactional(rollbackFor = Exception.class)`；MQ 发送不参与本地事务，统一走 Outbox |
+
+关键基础设施：`common/mybatis`（类型处理器、分页、时间戳）、`platform/idempotency`（接口幂等）、
+`platform/messaging`（异步任务 + Outbox + 消费幂等）。
+
+## 数据持久化覆盖的接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET / PUT | `/api/v1/user/profile` | 用户画像（`user_profile`），无记录返回空对象 |
+| GET / POST | `/api/v1/user/goals` | 备考目标列表 / 新增（新增需 `Idempotency-Key`） |
+| PUT / DELETE | `/api/v1/user/goals/{id}` | 更新（乐观锁）/ 逻辑删除 |
+| POST | `/api/v1/files` | 小文件直传（先对象后元数据，失败删对象）；同用户同 SHA-256 秒传 |
+| POST | `/api/v1/files/upload` | 批量直传 |
+| POST | `/api/v1/files/batch` | 批量取元数据 |
+| POST | `/api/v1/files/upload-sessions` | 初始化分片会话（需 `Idempotency-Key`，24h 过期） |
+| GET | `/api/v1/files/upload-sessions/{id}` | 查询会话进度 |
+| PUT | `/api/v1/files/upload-sessions/{id}/parts/{n}` | 上传分片（`X-Part-Hash` 可选） |
+| POST | `/api/v1/files/upload-sessions/{id}/complete` | 合并分片并生成文件记录 |
+| DELETE | `/api/v1/files/upload-sessions/{id}` | 取消会话 |
+| GET | `/api/v1/files` | 我的文件分页列表 |
+| GET | `/api/v1/files/{id}/content` | 60 分钟预签名下载地址 |
+| DELETE | `/api/v1/files/{id}` | 逻辑删除 + 删对象 |
+| GET | `/api/admin/login-logs` | 登录日志排查（管理员） |
+
+其他持久化路径：登录日志（`sys_login_log`，成功/失败都写、独立事务）、操作审计
+（`@AuditLog` 切面异步写 `sys_audit_log`）、接口幂等（`@Idempotent` + `Idempotency-Key`，
+SUCCESS 回放 / PROCESSING 409 / 内容变化 422）。
+
+## 文档解析链路：Outbox + MQ
+
+上传/重解析不再直接跑 `@Async`，而是事务内写 `sys_async_task` + `sys_message_outbox`：
+
+```
+上传 → AsyncTask(PENDING) + Outbox(PENDING) 同一事务
+     → OutboxPublisherJob 抢单 → RabbitMQ（publisher-confirm 后 PUBLISHED）
+     → DocParseConsumer 消费幂等 → 解析流水线 + 任务 SUCCEEDED 同事务
+     → 失败重试 3 次后 reject 进 kaoyan.doc.parse.dlq，任务置 FAILED
+```
+
+开关 `kaoyan.mq.doc-parse-enabled`（环境变量 `MQ_DOC_PARSE_ENABLED`）设为 `false` 时回退为本地异步线程，
+离线开发不依赖 MQ 也能跑。队列名已改为 `kaoyan.doc.parse.queue`（带死信参数），旧的
+`doc_parse_queue` 可以在 broker 上手工删除。
+
 ## 目录
 
 ```

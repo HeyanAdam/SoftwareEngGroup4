@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.platform.messaging.mapper.ConsumeLogMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.platform.messaging.entity.ConsumeLog">
+        <id column="id" property="id"/>
+        <result column="message_id" property="messageId"/>
+        <result column="consumer_name" property="consumerName"/>
+        <result column="biz_key" property="bizKey"/>
+        <result column="status" property="status"/>
+        <result column="retry_count" property="retryCount"/>
+        <result column="error_message" property="errorMessage"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.platform.messaging.entity.ConsumeLog"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_message_consume_log
+            (message_id, consumer_name, biz_key, status, retry_count, error_message,
+             create_time, update_time)
+        VALUES
+            (#{messageId}, #{consumerName}, #{bizKey}, 'PROCESSING', #{retryCount}, NULL,
+             #{createTime}, #{updateTime})
+    </insert>
+
+    <select id="selectByMessage" resultMap="BaseResultMap">
+        SELECT id, message_id, consumer_name, biz_key, status, retry_count, error_message,
+               create_time, update_time
+        FROM sys_message_consume_log
+        WHERE message_id = #{messageId} AND consumer_name = #{consumerName}
+    </select>
+
+    <update id="markSucceeded">
+        UPDATE sys_message_consume_log
+        SET status = 'SUCCEEDED',
+            error_message = NULL,
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="failAndIncrement">
+        UPDATE sys_message_consume_log
+        SET status = 'FAILED',
+            retry_count = retry_count + 1,
+            error_message = #{error},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="resetProcessing">
+        UPDATE sys_message_consume_log
+        SET status = 'PROCESSING',
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status IN ('PROCESSING', 'FAILED')
+    </update>
+
+    <update id="markDeadLetter">
+        UPDATE sys_message_consume_log
+        SET status = 'DEAD_LETTER',
+            error_message = #{error},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+</mapper>

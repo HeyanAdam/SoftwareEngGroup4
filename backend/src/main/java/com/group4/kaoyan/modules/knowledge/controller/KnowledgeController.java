@@ -2,6 +2,7 @@ package com.group4.kaoyan.modules.knowledge.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.group4.kaoyan.common.R;
+import com.group4.kaoyan.modules.audit.annotation.AuditLog;
 import com.group4.kaoyan.modules.knowledge.entity.KbDocument;
 import com.group4.kaoyan.modules.knowledge.entity.KbKnowledgeBase;
 import com.group4.kaoyan.modules.knowledge.service.KnowledgeService;
@@ -35,6 +36,7 @@ public class KnowledgeController {
     }
 
     @SaCheckPermission("kb:create")
+    @AuditLog(module = "kb", action = "CREATE", resourceType = "KNOWLEDGE_BASE")
     @PostMapping("/kb")
     public R<KbKnowledgeBase> create(@RequestBody KbCreateReq req) {
         return R.ok(knowledgeService.create(req.name(), req.description()));
@@ -47,6 +49,7 @@ public class KnowledgeController {
     }
 
     @SaCheckPermission("kb:delete")
+    @AuditLog(module = "kb", action = "DELETE", resourceType = "KNOWLEDGE_BASE")
     @DeleteMapping("/kb/{id}")
     public R<Void> delete(@PathVariable Long id) {
         knowledgeService.deleteKnowledgeBase(id);
@@ -54,6 +57,7 @@ public class KnowledgeController {
     }
 
     @SaCheckPermission("doc:upload")
+    @AuditLog(module = "kb", action = "UPLOAD_DOCUMENT", resourceType = "DOCUMENT")
     @PostMapping("/kb/{id}/documents")
     public R<KbDocument> upload(@PathVariable Long id, @RequestParam("file") MultipartFile file) {
         return R.ok(knowledgeService.upload(id, file));
@@ -72,6 +76,7 @@ public class KnowledgeController {
     }
 
     @SaCheckPermission("doc:delete")
+    @AuditLog(module = "kb", action = "DELETE_DOCUMENT", resourceType = "DOCUMENT")
     @DeleteMapping("/doc/{id}")
     public R<Void> deleteDocument(@PathVariable Long id) {
         knowledgeService.deleteDocument(id);
@@ -79,6 +84,7 @@ public class KnowledgeController {
     }
 
     @SaCheckPermission("doc:upload")
+    @AuditLog(module = "kb", action = "REPARSE_DOCUMENT", resourceType = "DOCUMENT")
     @PostMapping("/doc/{id}/reparse")
     public R<Void> reparse(@PathVariable Long id) {
         knowledgeService.reparse(id);

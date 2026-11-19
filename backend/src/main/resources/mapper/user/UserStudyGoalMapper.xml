@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.user.mapper.UserStudyGoalMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.modules.user.entity.UserStudyGoal">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="target_school_id" property="targetSchoolId"/>
+        <result column="target_school_name" property="targetSchoolName"/>
+        <result column="target_major" property="targetMajor"/>
+        <result column="target_score" property="targetScore"/>
+        <result column="target_subject_scores" property="targetSubjectScores"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="exam_year" property="examYear"/>
+        <result column="exam_date" property="examDate"/>
+        <result column="plan_type" property="planType"/>
+        <result column="status" property="status"/>
+        <result column="remark" property="remark"/>
+        <result column="deleted" property="deleted"/>
+        <result column="version" property="version"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, target_school_id, target_school_name, target_major, target_score,
+        target_subject_scores, exam_year, exam_date, plan_type, status, remark,
+        deleted, version, create_time, update_time
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_study_goal
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_study_goal
+        WHERE user_id = #{userId}
+          AND deleted = 0
+        <if test="status != null">AND status = #{status}</if>
+        ORDER BY exam_year DESC, id DESC
+    </select>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.modules.user.entity.UserStudyGoal"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_study_goal
+            (user_id, target_school_id, target_school_name, target_major, target_score,
+             target_subject_scores, exam_year, exam_date, plan_type, status, remark,
+             deleted, version, create_time, update_time)
+        VALUES
+            (#{userId}, #{targetSchoolId}, #{targetSchoolName}, #{targetMajor}, #{targetScore},
+             #{targetSubjectScores, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+             #{examYear}, #{examDate}, #{planType}, #{status}, #{remark},
+             0, 0, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="updateWithVersion" parameterType="com.group4.kaoyan.modules.user.entity.UserStudyGoal">
+        UPDATE user_study_goal
+        SET target_school_id = #{targetSchoolId},
+            target_school_name = #{targetSchoolName},
+            target_major = #{targetMajor},
+            target_score = #{targetScore},
+            target_subject_scores = #{targetSubjectScores, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+            exam_year = #{examYear},
+            exam_date = #{examDate},
+            plan_type = #{planType},
+            status = #{status},
+            remark = #{remark},
+            version = version + 1,
+            update_time = #{updateTime}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND version = #{version}
+          AND deleted = 0
+    </update>
+
+    <update id="logicDelete">
+        UPDATE user_study_goal
+        SET deleted = 1,
+            version = version + 1,
+            update_time = NOW()
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted = 0
+    </update>
+</mapper>

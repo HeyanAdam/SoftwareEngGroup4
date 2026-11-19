@@ -3,19 +3,20 @@ package com.group4.kaoyan.modules.knowledge.service;
 import cn.hutool.crypto.digest.DigestUtil;
 import com.group4.kaoyan.common.BizException;
 import com.group4.kaoyan.common.config.AiProperties;
-import com.group4.kaoyan.platform.ai.embedding.EmbeddingClient;
-import com.group4.kaoyan.platform.storage.StorageService;
-import com.group4.kaoyan.platform.ai.vectorstore.VectorStore;
 import com.group4.kaoyan.modules.knowledge.entity.KbDocument;
 import com.group4.kaoyan.modules.knowledge.entity.KbDocumentChunk;
 import com.group4.kaoyan.modules.knowledge.mapper.ChunkMapper;
 import com.group4.kaoyan.modules.knowledge.mapper.DocumentMapper;
 import com.group4.kaoyan.modules.knowledge.parse.DocumentParserFactory;
 import com.group4.kaoyan.modules.knowledge.parse.TextSplitter;
+import com.group4.kaoyan.platform.ai.embedding.EmbeddingClient;
+import com.group4.kaoyan.platform.ai.vectorstore.VectorStore;
+import com.group4.kaoyan.platform.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.InputStream;
 import java.time.LocalDateTime;
@@ -23,7 +24,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 异步流水线：解析 → 全文落库 → 切片落库 → 向量化 → 写 Milvus → 置 READY。
+ * 文档处理流水线：解析 → 全文落库 → 切片落库 → 向量化 → 写 Milvus → 置 READY。
+ *
+ * <p>两个入口：</p>
+ * <ul>
+ *   <li>{@link #process(Long)}：本地/兼容路径，异步执行，失败自行置 FAILED；</li>
+ *   <li>{@link #processInTransaction(Long)}：MQ 消费路径，与任务状态更新同一事务，
+ *       失败直接抛出由消费者回滚 + 重试。</li>
+ * </ul>
  */
 @Slf4j
 @Service
@@ -41,62 +49,76 @@ public class DocumentProcessService {
 
     @Async("documentExecutor")
     public void process(Long docId) {
-        KbDocument doc = documentMapper.selectById(docId);
-        if (doc == null) {
-            return;
-        }
         try {
-            updateStatus(docId, "PARSING", null);
-            String text;
-            try (InputStream in = storageService.download(doc.getObjectKey())) {
-                text = parserFactory.parse(in, doc.getFileExt());
-            }
-            if (text == null || text.isBlank()) {
-                throw new BizException("未解析出文本内容，扫描件请先做 OCR");
-            }
-            KbDocument meta = new KbDocument();
-            meta.setId(docId);
-            meta.setRawText(text);
-            meta.setContentHash(DigestUtil.md5Hex(text));
-            meta.setUpdateTime(LocalDateTime.now());
-            documentMapper.updateById(meta);
-
-            updateStatus(docId, "SPLITTING", null);
-            List<String> pieces = textSplitter.split(text);
-            if (pieces.isEmpty()) {
-                throw new BizException("切片结果为空");
-            }
-            chunkMapper.deleteByDocId(docId);
-            List<KbDocumentChunk> chunks = new ArrayList<>();
-            for (int i = 0; i < pieces.size(); i++) {
-                KbDocumentChunk c = new KbDocumentChunk();
-                c.setDocId(docId);
-                c.setKbId(doc.getKbId());
-                c.setUserId(doc.getUserId());
-                c.setChunkIndex(i);
-                c.setContent(pieces.get(i));
-                c.setCharCount(pieces.get(i).length());
-                c.setCreateTime(LocalDateTime.now());
-                chunkMapper.insert(c);
-                c.setMilvusId(c.getId());
-                chunkMapper.updateById(c);
-                chunks.add(c);
-            }
-
-            updateStatus(docId, "EMBEDDING", null);
-            embedAndIndex(docId, doc, chunks);
-
-            KbDocument ok = new KbDocument();
-            ok.setId(docId);
-            ok.setChunkCount(chunks.size());
-            ok.setStatus("READY");
-            ok.setUpdateTime(LocalDateTime.now());
-            documentMapper.updateById(ok);
-            log.info("文档处理完成 docId={}，切片数={}", docId, chunks.size());
+            runPipeline(docId);
         } catch (Exception e) {
             log.error("文档处理失败 docId={}", docId, e);
             updateStatus(docId, "FAILED", brief(e.getMessage()));
         }
+    }
+
+    /** MQ 消费入口：整个流水线与任务 SUCCEEDED 在同一事务里，失败整体回滚。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void processInTransaction(Long docId) {
+        runPipeline(docId);
+    }
+
+    private void runPipeline(Long docId) {
+        KbDocument doc = documentMapper.selectById(docId);
+        if (doc == null) {
+            throw new BizException(404, "文档不存在：" + docId);
+        }
+        updateStatus(docId, "PARSING", null);
+        String text;
+        try (InputStream in = storageService.download(doc.getObjectKey())) {
+            text = parserFactory.parse(in, doc.getFileExt());
+        } catch (Exception e) {
+            throw new BizException("下载或解析文档失败：" + e.getMessage());
+        }
+        if (text == null || text.isBlank()) {
+            throw new BizException("未解析出文本内容，扫描件请先做 OCR");
+        }
+
+        KbDocument meta = new KbDocument();
+        meta.setId(docId);
+        meta.setRawText(text);
+        meta.setContentHash(DigestUtil.md5Hex(text));
+        meta.setUpdateTime(LocalDateTime.now());
+        documentMapper.updateById(meta);
+
+        updateStatus(docId, "SPLITTING", null);
+        List<String> pieces = textSplitter.split(text);
+        if (pieces.isEmpty()) {
+            throw new BizException("切片结果为空");
+        }
+        chunkMapper.deleteByDocId(docId);
+        List<KbDocumentChunk> chunks = new ArrayList<>();
+        for (int i = 0; i < pieces.size(); i++) {
+            KbDocumentChunk c = new KbDocumentChunk();
+            c.setDocId(docId);
+            c.setKbId(doc.getKbId());
+            c.setUserId(doc.getUserId());
+            c.setChunkIndex(i);
+            c.setContent(pieces.get(i));
+            c.setCharCount(pieces.get(i).length());
+            c.setCreateTime(LocalDateTime.now());
+            chunkMapper.insert(c);
+            c.setMilvusId(c.getId());
+            chunkMapper.updateById(c);
+            chunks.add(c);
+        }
+
+        updateStatus(docId, "EMBEDDING", null);
+        embedAndIndex(docId, doc, chunks);
+
+        KbDocument ok = new KbDocument();
+        ok.setId(docId);
+        ok.setChunkCount(chunks.size());
+        ok.setStatus("READY");
+        ok.setErrorMsg(null);
+        ok.setUpdateTime(LocalDateTime.now());
+        documentMapper.updateById(ok);
+        log.info("文档处理完成 docId={}，切片数={}", docId, chunks.size());
     }
 
     private void embedAndIndex(Long docId, KbDocument doc, List<KbDocumentChunk> chunks) {

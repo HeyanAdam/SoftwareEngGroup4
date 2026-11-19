@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.file.mapper.UploadSessionMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.modules.file.entity.FileUploadSession">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="original_filename" property="originalFilename"/>
+        <result column="file_size" property="fileSize"/>
+        <result column="content_type" property="contentType"/>
+        <result column="file_hash" property="fileHash"/>
+        <result column="part_size" property="partSize"/>
+        <result column="part_count" property="partCount"/>
+        <result column="uploaded_count" property="uploadedCount"/>
+        <result column="bucket_name" property="bucketName"/>
+        <result column="object_key" property="objectKey"/>
+        <result column="status" property="status"/>
+        <result column="expires_at" property="expiresAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, original_filename, file_size, content_type, file_hash, part_size,
+        part_count, uploaded_count, bucket_name, object_key, status, expires_at,
+        create_time, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.modules.file.entity.FileUploadSession"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO file_upload_session
+            (user_id, original_filename, file_size, content_type, file_hash, part_size,
+             part_count, uploaded_count, bucket_name, object_key, status, expires_at,
+             create_time, update_time)
+        VALUES
+            (#{userId}, #{originalFilename}, #{fileSize}, #{contentType}, #{fileHash}, #{partSize},
+             #{partCount}, 0, #{bucketName}, #{objectKey}, #{status}, #{expiresAt},
+             #{createTime}, #{updateTime})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM file_upload_session
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectByIdForUser" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM file_upload_session
+        WHERE id = #{id} AND user_id = #{userId}
+    </select>
+
+    <update id="updateProgress">
+        UPDATE file_upload_session
+        SET uploaded_count = #{uploadedCount},
+            status = #{status},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status IN ('INIT', 'UPLOADING')
+    </update>
+
+    <update id="tryStartMerging">
+        UPDATE file_upload_session
+        SET status = 'MERGING',
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status IN ('INIT', 'UPLOADING')
+    </update>
+
+    <update id="markCompleted">
+        UPDATE file_upload_session
+        SET status = 'COMPLETED',
+            object_key = #{objectKey},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status IN ('INIT', 'UPLOADING', 'MERGING')
+    </update>
+
+    <update id="updateStatus">
+        UPDATE file_upload_session
+        SET status = #{status},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectExpired" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM file_upload_session
+        WHERE status IN ('INIT', 'UPLOADING')
+          AND expires_at IS NOT NULL
+          AND expires_at &lt; NOW()
+        ORDER BY id
+        LIMIT #{limit}
+    </select>
+
+    <update id="cancel">
+        UPDATE file_upload_session
+        SET status = 'CANCELLED',
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status IN ('INIT', 'UPLOADING', 'MERGING', 'FAILED')
+    </update>
+</mapper>
