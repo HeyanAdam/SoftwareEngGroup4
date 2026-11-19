@@ -1,0 +1,83 @@
+name: kaoyan-ai
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: kaoyan-mysql
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: kaoyan-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: kaoyan-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "${RABBITMQ_PORT}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 暂时去掉MinIO镜像，国内拉取被墙，测试MQ不需要MinIO
+  # minio:
+  #   image: minio/minio
+  #   container_name: kaoyan-minio
+  #   restart: unless-stopped
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+  #     MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+  #   ports:
+  #     - "${MINIO_API_PORT}:9000"
+  #     - "${MINIO_CONSOLE_PORT}:9001"
+  #   volumes:
+  #     - minio_data:/data
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: kaoyan-mailpit
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_SMTP_PORT}:1025"
+      - "${MAILPIT_WEB_PORT}:8025"
+
+volumes:
+  mysql_data:
+  redis_data:
+  rabbitmq_data:
+  minio_data:
