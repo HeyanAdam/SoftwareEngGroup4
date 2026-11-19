@@ -26,12 +26,12 @@
 clone 后直接用 IDEA 打开仓库根目录（Maven 项目会自动导入 backend），然后在右上角运行配置下拉里选中：
 
 ```text
-All: 一键启动      <-- 选这个，点绿色三角
+一键启动      <-- 选这个，点绿色三角
 ```
 
-点一次即可同时拉起：`Infra: docker compose up`（MySQL / Redis / RabbitMQ / Mailpit）→ `Frontend: npm install` → `Frontend: npm dev`（Vite）→ `Backend: KaoyanApplication`（dev profile，Flyway 自动建表）。Run 面板里会出现三个并行标签页，日志互不干扰，停哪个就点对应标签页的停止按钮。
+点一次即可同时拉起三个任务：`基础设施: 容器启动`（MySQL / Redis / RabbitMQ / Mailpit）→ `前端: 依赖安装` → `前端: 开发服务`（Vite）→ `后端: 应用主类启动`（dev profile，Flyway 自动建表）。Run 面板里会出现三个并行标签页，日志互不干扰，停哪个就点对应标签页的停止按钮。
 
-首次启动如果后端比 MySQL 先就绪而报连接失败，再点一次运行即可（容器此时已经健康）。只想单独启动某个模块时，直接选对应的 `Infra:` / `Backend:` / `Frontend:` 配置。
+首次启动如果后端比 MySQL 先就绪而报连接失败，再点一次运行即可（容器此时已经健康）。只想单独启动某一块时，直接选对应的 `基础设施:` / `后端:` / `前端:` 配置，例如 `基础设施: 容器启动`、`后端: 应用主类启动`、`前端: 开发服务`。
 
 ## 手工启动（排查问题时用）
 
@@ -43,8 +43,16 @@ All: 一键启动      <-- 选这个，点绿色三角
 
 ## IDEA 共享配置说明
 
-仓库内置共享运行配置（`.idea/runConfigurations`）：
-`All: 一键启动`、`Infra: docker compose up`、`Backend: KaoyanApplication`、`Backend: mvn spring-boot:run`、`Frontend: npm install`、`Frontend: npm dev`。
+仓库内置共享运行配置（`.idea/runConfigurations`），显示名全为中文：
+
+| 运行配置 | 作用 |
+| --- | --- |
+| `一键启动` | 一次拉起基础设施 + 前端 + 后端 |
+| `基础设施: 容器启动` | `docker compose up`（MySQL / Redis / RabbitMQ / Mailpit） |
+| `后端: 应用主类启动` | 直接跑 `KaoyanApplication`（dev profile） |
+| `后端: Maven 启动` | `mvn spring-boot:run` |
+| `前端: 依赖安装` | `npm install` |
+| `前端: 开发服务` | `npm run dev`（启动前自动先装依赖） |
 
 共享入库：`misc.xml`、`modules.xml`、`vcs.xml`、`encodings.xml`、`compiler.xml`、`runConfigurations/*.xml`、`frontend.iml`。
 个人/机器相关一律忽略：`workspace.xml`、`tasks.xml`、`usage.statistics.xml`、`shelf/`、`jarRepositories.xml`、`dictionaries/`、`dataSources*`、`httpRequests/`，以及 IDEA 导入 Maven 时自动生成的 `backend/*.iml`。

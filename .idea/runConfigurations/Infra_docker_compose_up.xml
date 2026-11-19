@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Infra: docker compose up" type="docker-compose" factoryName="Docker-Compose">
+  <configuration default="false" name="基础设施: 容器启动" type="docker-compose" factoryName="Docker-Compose">
     <option name="COMPOSE_FILE_PATHS">
       <list>
         <option value="$PROJECT_DIR$/deploy/docker-compose.yml" />
