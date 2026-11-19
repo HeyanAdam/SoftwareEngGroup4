@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,11 +36,12 @@ import java.util.Map;
  *   <li><b>旧角色码自动迁移</b>：ADMIN → SYSTEM_ADMIN、KB_ADMIN → CONTENT_OPERATOR、
  *       DATA_VIEWER → DATA_AUDITOR，用户绑定随角色一起搬过去再删旧角色，
  *       保证升级后管理员不失权；权限按官方矩阵重建，不带入过渡期的临时授权。</li>
- *   <li><b>不创建管理员账号</b>：账号由注册/受控初始化流程产生。</li>
+ *   <li><b>不创建管理员账号</b>：账号由注册/受控初始化流程产生，见 {@link AdminBootstrapInitializer}。</li>
  * </ol>
  */
 @Slf4j
 @Component
+@Order(1)
 @RequiredArgsConstructor
 public class RbacInitializer implements ApplicationRunner {
 
