@@ -21,10 +21,10 @@ export const API_BASE_URL = '/api/v1'
 
 /**
  * 管理端接口前缀。
- * 后端 AdminController 的路由是 /api/admin/**，不是 /api/v1/admin，
- * 所以这里必须单独一个实例，避免拼成 /api/v1/api/admin/users 造成 404。
+ * 与接口设计文档 1.1 节一致，统一前缀 /api/v1（AdminController 已迁至 /api/v1/admin）。
+ * 仍单独一个实例，用于后台接口语义分离，避免与他人共用同一个 baseURL 配置。
  */
-export const ADMIN_API_BASE_URL = '/api/admin'
+export const ADMIN_API_BASE_URL = '/api/v1/admin'
 
 /** 统一错误对象：业务码 + HTTP 状态 + 重试等待 + 请求 ID */
 export class ApiError extends Error {
@@ -169,7 +169,7 @@ function createService(baseURL: string): AxiosInstance {
 /** 普通业务接口实例（/api/v1） */
 const service = createService(API_BASE_URL)
 
-/** 管理端接口实例（/api/admin）：用户、角色、向量库等后台接口统一用它 */
+/** 管理端接口实例（/api/v1/admin）：用户、角色、向量库等后台接口统一用它 */
 export const adminRequest = createService(ADMIN_API_BASE_URL)
 
 /** 把 Mock 响应转成和后端一致的返回值 / ApiError */
@@ -258,7 +258,7 @@ export async function upload<T = unknown>(
   return response.data.data
 }
 
-/** 管理端 GET（自动走 /api/admin 前缀） */
+/** 管理端 GET（自动走 /api/v1/admin 前缀） */
 export async function adminGet<T = unknown>(
   url: string,
   config?: AxiosRequestConfig,
@@ -266,7 +266,7 @@ export async function adminGet<T = unknown>(
   return execute<T>('GET', url, undefined, () => adminRequest.get<ApiResult<T>>(url, config))
 }
 
-/** 管理端 POST（自动走 /api/admin 前缀） */
+/** 管理端 POST（自动走 /api/v1/admin 前缀） */
 export async function adminPost<T = unknown>(
   url: string,
   data?: unknown,
@@ -275,7 +275,7 @@ export async function adminPost<T = unknown>(
   return execute<T>('POST', url, data, () => adminRequest.post<ApiResult<T>>(url, data, config))
 }
 
-/** 管理端 PUT（自动走 /api/admin 前缀） */
+/** 管理端 PUT（自动走 /api/v1/admin 前缀） */
 export async function adminPut<T = unknown>(
   url: string,
   data?: unknown,
@@ -284,7 +284,7 @@ export async function adminPut<T = unknown>(
   return execute<T>('PUT', url, data, () => adminRequest.put<ApiResult<T>>(url, data, config))
 }
 
-/** 管理端 DELETE（自动走 /api/admin 前缀） */
+/** 管理端 DELETE（自动走 /api/v1/admin 前缀） */
 export async function adminDel<T = unknown>(
   url: string,
   config?: AxiosRequestConfig,
