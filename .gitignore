@@ -13,6 +13,9 @@ out/
 .env
 .env.local
 .env.*.local
+
+# 发件配置（由 tools/start-backend.ps1 生成，含 SMTP 密码 / 授权码）
+deploy/mail.env
 *.log
 logs/
 
