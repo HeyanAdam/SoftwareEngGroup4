@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.platform.idempotency.mapper.IdempotencyMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.platform.idempotency.IdempotencyRecord">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="endpoint" property="endpoint"/>
+        <result column="idempotency_key" property="idempotencyKey"/>
+        <result column="request_hash" property="requestHash"/>
+        <result column="response_code" property="responseCode"/>
+        <result column="response_json" property="responseJson"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="status" property="status"/>
+        <result column="expires_at" property="expiresAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectByKey" resultMap="BaseResultMap">
+        SELECT id, user_id, endpoint, idempotency_key, request_hash, response_code,
+               response_json, status, expires_at, create_time, update_time
+        FROM sys_idempotency_record
+        WHERE user_id = #{userId}
+          AND endpoint = #{endpoint}
+          AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.platform.idempotency.IdempotencyRecord"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_idempotency_record
+            (user_id, endpoint, idempotency_key, request_hash, response_code, response_json,
+             status, expires_at, create_time, update_time)
+        VALUES
+            (#{userId}, #{endpoint}, #{idempotencyKey}, #{requestHash}, #{responseCode},
+             #{responseJson, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+             #{status}, #{expiresAt}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="updateResult">
+        UPDATE sys_idempotency_record
+        SET status = #{status},
+            response_code = #{code},
+            response_json = #{body, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status = 0
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM sys_idempotency_record WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteExpired">
+        DELETE FROM sys_idempotency_record
+        WHERE expires_at &lt; NOW()
+        LIMIT #{limit}
+    </delete>
+</mapper>

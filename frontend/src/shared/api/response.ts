@@ -1,0 +1,52 @@
+/**
+ * 业务错误码与提示文案
+ * 来源：《P1交付给P3_前端登录联调说明》第 9 节 + 后端最新联调约定（新增 10013）
+ */
+
+/** 业务码常量 */
+export const BUSINESS_CODE = {
+  SUCCESS: 0,
+  PARAM_ERROR: 10000,
+  NOT_LOGIN: 10001,
+  ACCOUNT_PASSWORD_ERROR: 10002,
+  ACCOUNT_LOCKED: 10003,
+  ACCOUNT_EXISTS: 10004,
+  VERIFY_CODE_ERROR: 10005,
+  PASSWORD_NOT_MATCH: 10006,
+  USER_NOT_FOUND: 10007,
+  PERMISSION_DENIED: 10008,
+  DATA_SCOPE_DENIED: 10009,
+  TOO_MANY_REQUESTS: 10010,
+  IDEMPOTENT_CONFLICT: 10011,
+  METHOD_NOT_SUPPORT: 10012,
+  ACCOUNT_DISABLED: 10013,
+  SERVER_ERROR: 90000,
+} as const
+
+/** 本地补充：网络异常（非后端返回） */
+export const NETWORK_ERROR_CODE = -1
+
+/** 业务码 -> 中文提示 */
+const BUSINESS_MESSAGE_MAP: Record<number, string> = {
+  [BUSINESS_CODE.SUCCESS]: 'success',
+  [BUSINESS_CODE.PARAM_ERROR]: '参数校验失败',
+  [BUSINESS_CODE.NOT_LOGIN]: '未登录或登录已失效',
+  [BUSINESS_CODE.ACCOUNT_PASSWORD_ERROR]: '账号或密码错误',
+  [BUSINESS_CODE.ACCOUNT_LOCKED]: '账号已被锁定',
+  [BUSINESS_CODE.ACCOUNT_EXISTS]: '用户名或邮箱已被注册',
+  [BUSINESS_CODE.VERIFY_CODE_ERROR]: '验证码错误或已过期',
+  [BUSINESS_CODE.PASSWORD_NOT_MATCH]: '两次输入的密码不一致',
+  [BUSINESS_CODE.USER_NOT_FOUND]: '邮箱未注册',
+  [BUSINESS_CODE.PERMISSION_DENIED]: '无接口访问权限',
+  [BUSINESS_CODE.DATA_SCOPE_DENIED]: '无权访问该数据',
+  [BUSINESS_CODE.TOO_MANY_REQUESTS]: '请求过于频繁',
+  [BUSINESS_CODE.IDEMPOTENT_CONFLICT]: '请求处理中，请稍后重试',
+  [BUSINESS_CODE.METHOD_NOT_SUPPORT]: '请求方式不正确',
+  [BUSINESS_CODE.ACCOUNT_DISABLED]: '账号已被禁用，请联系管理员',
+  [BUSINESS_CODE.SERVER_ERROR]: '服务器开小差了，请稍后重试',
+}
+
+/** 按业务码取默认提示文案 */
+export function businessMessage(code: number): string | undefined {
+  return BUSINESS_MESSAGE_MAP[code]
+}

@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.file.mapper.FileObjectMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.modules.file.entity.FileObject">
+        <id column="id" property="id"/>
+        <result column="owner_user_id" property="ownerUserId"/>
+        <result column="scene" property="scene"/>
+        <result column="bucket_name" property="bucketName"/>
+        <result column="object_key" property="objectKey"/>
+        <result column="original_filename" property="originalFilename"/>
+        <result column="file_ext" property="fileExt"/>
+        <result column="content_type" property="contentType"/>
+        <result column="file_size" property="fileSize"/>
+        <result column="sha256" property="sha256"/>
+        <result column="status" property="status"/>
+        <result column="deleted" property="deleted"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, owner_user_id, scene, bucket_name, object_key, original_filename, file_ext,
+        content_type, file_size, sha256, status, deleted, create_time, update_time
+    </sql>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.modules.file.entity.FileObject"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO file_object
+            (owner_user_id, scene, bucket_name, object_key, original_filename, file_ext,
+             content_type, file_size, sha256, status, deleted, create_time, update_time)
+        VALUES
+            (#{ownerUserId}, #{scene}, #{bucketName}, #{objectKey}, #{originalFilename}, #{fileExt},
+             #{contentType}, #{fileSize}, #{sha256}, #{status}, 0, #{createTime}, #{updateTime})
+    </insert>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM file_object
+        WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectByIdForOwner" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM file_object
+        WHERE id = #{id} AND owner_user_id = #{ownerUserId} AND deleted = 0
+    </select>
+
+    <select id="selectByOwnerAndHash" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM file_object
+        WHERE owner_user_id = #{ownerUserId}
+          AND sha256 = #{sha256}
+          AND status = 'READY'
+          AND deleted = 0
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectByOwnerAndKey" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM file_object
+        WHERE owner_user_id = #{ownerUserId}
+          AND object_key = #{objectKey}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="selectPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM file_object
+        WHERE owner_user_id = #{ownerUserId}
+          AND deleted = 0
+        <if test="scene != null and scene != ''">AND scene = #{scene}</if>
+        ORDER BY id DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*)
+        FROM file_object
+        WHERE owner_user_id = #{ownerUserId}
+          AND deleted = 0
+        <if test="scene != null and scene != ''">AND scene = #{scene}</if>
+    </select>
+
+    <select id="selectByIds" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM file_object
+        WHERE owner_user_id = #{ownerUserId}
+          AND deleted = 0
+          AND id IN
+        <foreach collection="ids" item="item" open="(" separator="," close=")">
+            #{item}
+        </foreach>
+    </select>
+
+    <update id="logicDelete">
+        UPDATE file_object
+        SET deleted = 1,
+            update_time = NOW()
+        WHERE id = #{id}
+          AND owner_user_id = #{ownerUserId}
+          AND deleted = 0
+    </update>
+
+    <update id="updateStatus">
+        UPDATE file_object
+        SET status = #{status},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+</mapper>

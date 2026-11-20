@@ -83,13 +83,18 @@ class MqTest {
         assertEquals(RabbitTopologyConfig.TEST_QUEUE, topology.foundationTestQueue().getName());
         assertEquals(RabbitTopologyConfig.DOC_PARSE_QUEUE, topology.docParseQueue().getName());
         assertEquals(RabbitTopologyConfig.EXCHANGE, topology.kaoyanExchange().getName());
+        assertEquals(RabbitTopologyConfig.DLX_EXCHANGE, topology.kaoyanDlxExchange().getName());
+        assertEquals(RabbitTopologyConfig.DLQ_QUEUE, topology.docParseDeadLetterQueue().getName());
     }
 
     private void assertTopologyNames() {
         assertEquals("kaoyan.direct", RabbitTopologyConfig.EXCHANGE);
         assertEquals("foundation.test.queue", RabbitTopologyConfig.TEST_QUEUE);
         assertEquals("foundation.test", RabbitTopologyConfig.TEST_ROUTING_KEY);
-        assertEquals("doc_parse_queue", RabbitTopologyConfig.DOC_PARSE_QUEUE);
+        assertEquals("kaoyan.doc.parse.queue", RabbitTopologyConfig.DOC_PARSE_QUEUE);
         assertEquals("doc.parse.task", RabbitTopologyConfig.DOC_PARSE_ROUTING_KEY);
+        assertEquals("kaoyan.dlx", RabbitTopologyConfig.DLX_EXCHANGE);
+        assertEquals("kaoyan.doc.parse.dlq", RabbitTopologyConfig.DLQ_QUEUE);
+        assertEquals("doc.parse.dead", RabbitTopologyConfig.DLQ_ROUTING_KEY);
     }
 }

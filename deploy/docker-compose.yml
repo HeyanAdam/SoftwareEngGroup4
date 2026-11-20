@@ -53,7 +53,8 @@ services:
       timeout: 5s
       retries: 10
 
-  # 暂时去掉MinIO镜像，国内拉取被墙，测试MQ不需要MinIO
+  # MinIO（原始文件存储）：默认不启用，原因见 README「MinIO 说明」。
+  # 启用方法：取消下面整段注释 + `docker compose up -d minio`；未启用时后端会自动降级为「文件功能不可用」。
   # minio:
   #   image: minio/minio
   #   container_name: kaoyan-minio

@@ -10,8 +10,9 @@ import com.group4.kaoyan.modules.auth.dto.LoginRequest;
 import com.group4.kaoyan.modules.auth.dto.PasswordResetRequest;
 import com.group4.kaoyan.modules.auth.dto.RegisterRequest;
 import com.group4.kaoyan.modules.auth.entity.SysRole;
+import com.group4.kaoyan.modules.audit.service.LoginLogService;
 import com.group4.kaoyan.modules.auth.mapper.RoleMapper;
-import com.group4.kaoyan.modules.auth.service.IdempotencyService.Guard;
+import com.group4.kaoyan.modules.auth.service.AuthIdempotencyService.Guard;
 import com.group4.kaoyan.modules.auth.support.AuthException;
 import com.group4.kaoyan.modules.auth.support.AuthTexts;
 import com.group4.kaoyan.modules.auth.support.ClientRequest;
@@ -59,7 +60,7 @@ public class AuthService {
     private final LoginAttemptService loginAttemptService;
     private final SessionService sessionService;
     private final LoginLogService loginLogService;
-    private final IdempotencyService idempotencyService;
+    private final AuthIdempotencyService AuthIdempotencyService;
     /** 权限快照缓存：与 StpInterfaceImpl 共用，保证「登录返回的角色权限」和「注解鉴权」口径一致 */
     private final RbacSnapshotCache rbacSnapshotCache;
     private final TransactionTemplate transactionTemplate;
@@ -80,7 +81,7 @@ public class AuthService {
 
         long lockedSeconds = loginAttemptService.lockedSeconds(account);
         if (lockedSeconds > 0) {
-            loginLogService.record(null, account, false, client, "账号锁定中");
+            loginLogService.record(null, account, false, "账号锁定中");
             throw AuthException.locked(lockedSeconds);
         }
 
@@ -90,17 +91,17 @@ public class AuthService {
         SysUser user = findByAccount(account);
         if (user == null) {
             loginAttemptService.onFailure(account, client.ipKey());
-            loginLogService.record(null, account, false, client, "账号不存在");
+            loginLogService.record(null, account, false, "账号不存在");
             log.info("登录失败：账号不存在, account={}, ip={}", account, client.ip());
             throw AuthException.badCredentials();
         }
         if (isDisabled(user)) {
-            loginLogService.record(user.getId(), account, false, client, "账号已禁用");
+            loginLogService.record(user.getId(), account, false, "账号已禁用");
             throw AuthException.disabled();
         }
         if (!BCrypt.checkpw(password, user.getPasswordHash())) {
             int failures = loginAttemptService.onFailure(account, client.ipKey());
-            loginLogService.record(user.getId(), account, false, client, "密码错误");
+            loginLogService.record(user.getId(), account, false, "密码错误");
             log.info("登录失败：密码错误, account={}, ip={}, failures={}", account, client.ip(), failures);
             throw AuthException.badCredentials();
         }
@@ -117,11 +118,11 @@ public class AuthService {
 
         SysUser user = findByEmail(email);
         if (user == null) {
-            loginLogService.record(null, email, false, client, "邮箱未注册");
+            loginLogService.record(null, email, false, "邮箱未注册");
             throw AuthException.userNotFound("用户不存在");
         }
         if (isDisabled(user)) {
-            loginLogService.record(user.getId(), email, false, client, "账号已禁用");
+            loginLogService.record(user.getId(), email, false, "账号已禁用");
             throw AuthException.disabled();
         }
         return issueToken(user, client);
@@ -144,7 +145,7 @@ public class AuthService {
         vo.setPermissions(snapshot.permissions());
         vo.setHasProfile(userProfileMapper.countByUserId(user.getId()) > 0);
 
-        loginLogService.record(user.getId(), user.getUsername(), true, client, null);
+        loginLogService.record(user.getId(), user.getUsername(), true, null);
         return vo;
     }
 
@@ -159,19 +160,19 @@ public class AuthService {
         PasswordPolicy.validateMatch(request.getPassword(), request.getConfirmPassword());
         String verifyCode = AuthTexts.requireText(request.getVerifyCode(), "验证码不能为空");
 
-        Guard guard = idempotencyService.begin(ANONYMOUS_USER_ID, ENDPOINT_REGISTER, idempotencyKey,
-                idempotencyService.requestHash(username, email, verifyCode));
+        Guard guard = AuthIdempotencyService.begin(ANONYMOUS_USER_ID, ENDPOINT_REGISTER, idempotencyKey,
+                AuthIdempotencyService.requestHash(username, email, verifyCode));
         if (guard.hasCache()) {
-            return idempotencyService.readCache(guard, RegisterVO.class);
+            return AuthIdempotencyService.readCache(guard, RegisterVO.class);
         }
 
         try {
             RegisterVO vo = transactionTemplate.execute(status ->
                     createAccount(username, email, verifyCode, request));
-            idempotencyService.success(guard, 0, vo);
+            AuthIdempotencyService.success(guard, 0, vo);
             return vo;
         } catch (RuntimeException e) {
-            idempotencyService.failure(guard);
+            AuthIdempotencyService.failure(guard);
             throw e;
         }
     }
@@ -228,8 +229,8 @@ public class AuthService {
         PasswordPolicy.validateMatch(request.getNewPassword(), request.getConfirmPassword());
         String verifyCode = AuthTexts.requireText(request.getVerifyCode(), "验证码不能为空");
 
-        Guard guard = idempotencyService.begin(ANONYMOUS_USER_ID, ENDPOINT_PASSWORD_RESET, idempotencyKey,
-                idempotencyService.requestHash(email, verifyCode));
+        Guard guard = AuthIdempotencyService.begin(ANONYMOUS_USER_ID, ENDPOINT_PASSWORD_RESET, idempotencyKey,
+                AuthIdempotencyService.requestHash(email, verifyCode));
         if (guard.hasCache()) {
             return;
         }
@@ -250,11 +251,11 @@ public class AuthService {
             // 密码变了，旧登录态必须全部失效（接口文档 3.6）
             if (userId != null) {
                 sessionService.logoutUser(userId);
-                loginLogService.record(userId, email, true, client, "重置密码");
+                loginLogService.record(userId, email, true, "重置密码");
             }
-            idempotencyService.success(guard, 0, Boolean.TRUE);
+            AuthIdempotencyService.success(guard, 0, Boolean.TRUE);
         } catch (RuntimeException e) {
-            idempotencyService.failure(guard);
+            AuthIdempotencyService.failure(guard);
             throw e;
         }
     }
@@ -326,3 +327,4 @@ public class AuthService {
         return rbacSnapshotCache.get(userId).roles();
     }
 }
+

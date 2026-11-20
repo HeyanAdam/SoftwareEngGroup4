@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!--
+        日志格式说明（P2 任务 4）：
+        每行都带 requestId，同一个 HTTP 请求产生的所有日志可以用它串起来，
+        排查线上问题时先按 requestId 过滤，再按时间排序。
+
+        requestId 来自 RequestIdFilter（写入 MDC 的 requestId 键），
+        非请求线程（定时任务、MQ 消费线程、异步线程）没有该值，显示 no-req。
+    -->
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{requestId:-no-req}] %logger{40} - %msg%n"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!--
+        日志级别由 Spring Boot 的 logging.level.* 统一控制（见 application-dev.yml / application-prod.yml），
+        这里不写死级别，避免和配置文件互相打架。
+    -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>

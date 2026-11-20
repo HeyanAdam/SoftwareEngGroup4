@@ -71,6 +71,26 @@ class PermissionCatalogTest {
     }
 
     @Test
+    @DisplayName("扩展的 9 条权限码：学习计划 4 + 题库 1 + 文件 4")
+    void extendedCodesAreTheExpectedNine() {
+        List<String> v6 = List.of(
+                "kb:view", "kb:create", "kb:delete",
+                "doc:upload", "doc:delete",
+                "chat:send",
+                "admin:user:list", "admin:user:update",
+                "admin:role:list", "admin:role:update",
+                "admin:vector:manage");
+        List<String> extended = PermissionConstants.ALL_CODES.stream()
+                .filter(code -> !v6.contains(code))
+                .toList();
+        assertEquals(List.of(
+                "study-plan:view", "study-plan:create", "study-plan:update", "study-task:update",
+                "question:view",
+                "file:view", "file:upload", "file:download", "file:delete"), extended,
+                "新增的 9 条业务权限码必须是这 9 条，顺序与字典一致");
+    }
+
+    @Test
     @DisplayName("每个权限码都有中文名和所属模块")
     void metadataIsComplete() {
         for (PermissionConstants.PermissionDef def : PermissionConstants.CATALOG) {
