@@ -9,8 +9,8 @@
   pwsh tools\start-backend.ps1 -SkipInfra         # 跳过 docker 容器启动
 
 说明：
-  deploy\mail.env 只有 4 行（发件方式 / 账号 / 密码或 key / 发件人），
-  脚本按发件方式自动补 host、port、HELO、STARTTLS，并映射成 Spring 需要的 8 个环境变量。
+  脚本按发件方式自动写入 host、port、HELO、STARTTLS 等 Spring Mail 配置，
+  同时在当前进程注入同样的环境变量，IntelliJ 和命令行启动都能使用。
   该文件含密码，已被 .gitignore 忽略，不会进仓库。
 #>
 param(
@@ -47,14 +47,29 @@ function Read-MailEnv {
 }
 
 function Write-MailEnv {
-    param([string]$Path, [string]$MailProvider, [string]$User, [string]$Secret, [string]$From)
+    param(
+        [string]$Path,
+        [string]$MailProvider,
+        [string]$User,
+        [string]$Secret,
+        [string]$From,
+        [hashtable]$Preset
+    )
     $content = @(
         '# 发件配置：本文件含密码，已被 .gitignore 忽略，不入库',
         '# 可选 MAIL_PROVIDER：brevo / smtp2go / qq / mailpit',
         "MAIL_PROVIDER=$MailProvider",
+        "MAIL_HOST=$($Preset.host)",
+        "MAIL_PORT=$($Preset.port)",
         "MAIL_USERNAME=$User",
         "MAIL_PASSWORD=$Secret",
-        "MAIL_FROM=$From"
+        "MAIL_SMTP_AUTH=$($Preset.auth.ToString().ToLowerInvariant())",
+        "MAIL_STARTTLS=$($Preset.starttls.ToString().ToLowerInvariant())",
+        "MAIL_HELO_HOST=$($Preset.helo)",
+        "MAIL_FROM=$From",
+        "MAIL_CONNECTION_TIMEOUT=10000",
+        "MAIL_READ_TIMEOUT=10000",
+        "MAIL_WRITE_TIMEOUT=10000"
     ) -join "`r`n"
     Set-Content -LiteralPath $Path -Value $content -Encoding utf8
     Write-Host ("已写入 " + $Path) -ForegroundColor DarkGray
@@ -103,7 +118,7 @@ if ($needConfig) {
         $chosen = Select-Provider $defaultProvider
 
         if ($chosen -eq 'mailpit') {
-            Write-MailEnv $envFile $chosen '' '' 'no-reply@kaoyan.local'
+            Write-MailEnv $envFile $chosen '' '' 'no-reply@kaoyan.local' $presets[$chosen]
         }
         else {
             $defaultUser = if ($config -and $config['MAIL_USERNAME']) { $config['MAIL_USERNAME'] } else { '' }
@@ -120,7 +135,7 @@ if ($needConfig) {
             $from = Read-Host $fromPrompt
             if ([string]::IsNullOrWhiteSpace($from)) { $from = $user }
 
-            Write-MailEnv $envFile $chosen $user $secret $from
+            Write-MailEnv $envFile $chosen $user $secret $from $presets[$chosen]
         }
         $config = Read-MailEnv $envFile
     }

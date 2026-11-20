@@ -62,3 +62,15 @@ clone 后直接用 IDEA 打开仓库根目录（Maven 项目会自动导入 back
 - 前端：http://localhost:5173
 - Swagger：http://localhost:8080/swagger-ui/index.html
 - 健康检查：http://localhost:8080/api/v1/health/ready
+
+## 真实邮箱验证码
+
+默认使用本地 Mailpit，只用于开发调试，不会把邮件投递到真实邮箱。需要向真实邮箱发送验证码时，可使用 Brevo、SMTP2GO 或 QQ 邮箱 SMTP：
+
+```powershell
+pwsh tools/start-backend.ps1
+```
+
+首次运行会引导选择服务商、填写 SMTP 账号和授权码，并生成不入库的 `deploy/mail.env`。之后 IntelliJ 或命令行启动都会读取该配置。已配置过时，使用 `-Reconfigure` 重新选择服务商。
+
+QQ 邮箱填写的是 SMTP 授权码，不是 QQ 登录密码；Brevo、SMTP2GO 需先在服务商控制台启用 SMTP 并生成凭据。免费额度以服务商当前控制台为准。

@@ -92,6 +92,15 @@ watch(
   { deep: true },
 )
 
+// 浏览器/密码管理器可能把邮箱开头当成普通文本自动填进验证码框。
+// 邮箱变化后主动清空，避免旧值或自动填充值被误提交。
+watch(
+  () => form.email,
+  () => {
+    form.verify_code = ''
+  },
+)
+
 function startCountdown(seconds: number): void {
   countdown.value = Math.max(1, seconds)
   if (countdownTimer) window.clearInterval(countdownTimer)
@@ -120,6 +129,7 @@ async function sendCode(): Promise<void> {
 
   try {
     const data = await sendVerificationCode({ email: form.email, purpose: 'REGISTER' })
+    form.verify_code = ''
     startCountdown(data.retry_after || 60)
     ElMessage.success('验证码已发送，请查收邮箱')
   } catch (error) {
@@ -221,6 +231,7 @@ onBeforeUnmount(() => {
         ref="formRef"
         :model="form"
         :rules="rules"
+        autocomplete="off"
         label-position="top"
         @submit.prevent="submit"
       >
@@ -246,7 +257,10 @@ onBeforeUnmount(() => {
           <div class="captcha-row">
             <el-input
               v-model="form.verify_code"
+              name="register-verification-code"
               placeholder="请输入 6 位验证码"
+              autocomplete="one-time-code"
+              inputmode="numeric"
               maxlength="6"
             />
             <el-button :disabled="countdown > 0" @click="sendCode">
