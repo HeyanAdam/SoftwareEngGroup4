@@ -303,7 +303,7 @@ public class FileService {
         PageQuery page = PageQuery.of(pageNum, pageSize);
         long total = fileObjectMapper.countPage(userId, scene);
         List<FileObject> records = fileObjectMapper.selectPage(userId, scene, page.getOffset(), page.getLimit());
-        return R.PageData.of(total, records);
+        return R.PageData.of(total, records, pageNum, pageSize);
     }
 
     public List<FileObject> batch(Long userId, List<Long> ids) {

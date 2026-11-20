@@ -56,6 +56,29 @@ spring:
       database: ${REDIS_DB:0}
       timeout: 5000
 
+  # ========== 邮件（本地 Mailpit：SMTP 1025 / 收信页面 8025） ==========
+  # 该段同时属于 P2 的 chore/platform-deps 范围，合并时保留一份即可
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        # 关键：Jakarta Mail 生成 Message-ID 时会调 InetAddress.getCanonicalHostName() 做反向 DNS，
+        # Windows 上这一步会卡 20 秒（实测接口耗时 20.9s）。显式给 mail.from 后跳过该解析，
+        # 实测降到 200ms 级。localhost 与超时是第二道保险。
+        from: ${MAIL_FROM:no-reply@kaoyan.local}
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_STARTTLS:false}
+          localhost: ${MAIL_HELO_HOST:kaoyan.local}
+          connectiontimeout: ${MAIL_CONNECTION_TIMEOUT:5000}
+          timeout: ${MAIL_READ_TIMEOUT:5000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT:5000}
+
   # ============ RabbitMQ 配置 新增 ============
   rabbitmq:
     host: ${RABBITMQ_HOST:127.0.0.1}
@@ -93,11 +116,14 @@ sa-token:
   is-share: false
   token-style: uuid
   is-log: false
+  # 注意：真正生效的匿名白名单在 WebConfig.PUBLIC_PATHS，这里只做兜底同步，不要加业务路径。
   exclude-path:
-    - /api/kb
-    - /api/kb/**
-    - /api/auth/login
-    - /api/auth/register
+    - /api/v1/auth/captcha
+    - /api/v1/auth/verification-codes
+    - /api/v1/auth/register
+    - /api/v1/auth/login
+    - /api/v1/auth/password-reset
+    - /api/v1/health/**
 
 springdoc:
   api-docs:
@@ -131,6 +157,19 @@ kaoyan:
     chunk-size: ${CHUNK_SIZE:400}
     chunk-overlap: ${CHUNK_OVERLAP:80}
     history-rounds: ${HISTORY_ROUNDS:6}
+  # ========== 认证模块（P1）：验证码、锁定、限流、发件人 ==========
+  auth:
+    captcha-ttl: ${AUTH_CAPTCHA_TTL:5m}
+    captcha-max-attempts: ${AUTH_CAPTCHA_MAX_ATTEMPTS:3}
+    email-code-ttl: ${AUTH_EMAIL_CODE_TTL:5m}
+    email-code-interval: ${AUTH_EMAIL_CODE_INTERVAL:60s}
+    email-code-ip-interval: ${AUTH_EMAIL_CODE_IP_INTERVAL:60s}
+    email-code-max-attempts: ${AUTH_EMAIL_CODE_MAX_ATTEMPTS:5}
+    login-max-failures: ${AUTH_LOGIN_MAX_FAILURES:5}
+    login-lock-duration: ${AUTH_LOGIN_LOCK_DURATION:15m}
+    login-failure-window: ${AUTH_LOGIN_FAILURE_WINDOW:30m}
+    mail-from: ${MAIL_FROM:no-reply@kaoyan.local}
+    mail-subject-prefix: "[考研AI导学系统]"
   mq:
     # false：文档解析回退为本地 @Async，不走 Outbox/MQ（离线开发兜底）
     doc-parse-enabled: ${MQ_DOC_PARSE_ENABLED:true}

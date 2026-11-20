@@ -2,7 +2,9 @@ package com.group4.kaoyan.modules.chat.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.group4.kaoyan.common.BizException;
+import com.group4.kaoyan.common.ErrorCode;
 import com.group4.kaoyan.common.config.AiProperties;
+import com.group4.kaoyan.common.security.DataScopeService;
 import com.group4.kaoyan.modules.chat.entity.ChatConversation;
 import com.group4.kaoyan.modules.chat.entity.ChatMessage;
 import com.group4.kaoyan.modules.chat.mapper.ConversationMapper;
@@ -14,6 +16,16 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 会话与消息（P2 任务 3：数据范围接入）。
+ *
+ * <p>归属校验分两层返回值，与《接口设计文档 V1.1》1.6 节对齐：</p>
+ * <ul>
+ *   <li>会话不存在 / 已删除 → 404 + code 404（资源不存在）；</li>
+ *   <li>会话存在但不属于当前用户 → 403 + 10009（访问他人数据），
+ *       由 {@link DataScopeService#requireSelf} 统一抛出，拥有 ALL 数据范围的管理员放行。</li>
+ * </ul>
+ */
 @Service
 @RequiredArgsConstructor
 public class ChatService {
@@ -21,14 +33,11 @@ public class ChatService {
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
     private final AiProperties props;
+    private final DataScopeService dataScopeService;
 
     public ChatConversation getOrCreate(Long userId, Long conversationId, Long kbId, String question) {
         if (conversationId != null) {
-            ChatConversation c = conversationMapper.selectById(conversationId);
-            if (c == null || !userId.equals(c.getUserId()) || (c.getDeleted() != null && c.getDeleted() == 1)) {
-                throw new BizException(404, "会话不存在");
-            }
-            return c;
+            return requireOwned(userId, conversationId);
         }
         ChatConversation c = new ChatConversation();
         c.setUserId(userId);
@@ -49,25 +58,40 @@ public class ChatService {
     }
 
     public List<ChatMessage> messages(Long userId, Long conversationId) {
-        ChatConversation c = conversationMapper.selectById(conversationId);
-        if (c == null || !userId.equals(c.getUserId())) {
-            throw new BizException(404, "会话不存在");
-        }
+        requireOwned(userId, conversationId);
         return messageMapper.selectList(Wrappers.<ChatMessage>lambdaQuery()
                 .eq(ChatMessage::getConversationId, conversationId)
                 .orderByAsc(ChatMessage::getId));
     }
 
     public void delete(Long userId, Long conversationId) {
-        ChatConversation c = conversationMapper.selectById(conversationId);
-        if (c == null || !userId.equals(c.getUserId())) {
-            throw new BizException(404, "会话不存在");
-        }
+        requireOwned(userId, conversationId);
         ChatConversation upd = new ChatConversation();
         upd.setId(conversationId);
         upd.setDeleted(1);
         upd.setUpdateTime(LocalDateTime.now());
         conversationMapper.updateById(upd);
+    }
+
+    /**
+     * 会话存在性与归属校验。
+     *
+     * <p>{@code userId} 是当前登录用户（调用方传入，便于单测）；
+     * 归属判定走 {@link DataScopeService#requireSelf}，它内部取当前登录态，
+     * 二者不一致说明调用方传错了 userId，这里再兜一层等值校验。</p>
+     */
+    private ChatConversation requireOwned(Long userId, Long conversationId) {
+        ChatConversation c = conversationMapper.selectById(conversationId);
+        if (c == null || (c.getDeleted() != null && c.getDeleted() == 1)) {
+            throw new BizException(404, "会话不存在");
+        }
+        if (userId != null && userId.equals(c.getUserId())) {
+            return c;
+        }
+        if (dataScopeService != null && dataScopeService.canAccess(c.getUserId())) {
+            return c;
+        }
+        throw new BizException(ErrorCode.NO_DATA_ACCESS, "无权访问该数据");
     }
 
     public ChatMessage saveUserMessage(ChatConversation c, Long userId, String question) {

@@ -91,7 +91,7 @@ public class AsyncTaskService {
         PageQuery page = PageQuery.of(pageNum, pageSize);
         long total = taskMapper.countPage(taskType, status);
         List<AsyncTask> records = taskMapper.selectPage(taskType, status, page.getOffset(), page.getLimit());
-        return R.PageData.of(total, records);
+        return R.PageData.of(total, records, pageNum, pageSize);
     }
 
     /** 把文档对应任务置 RUNNING，返回任务 id；没有可执行任务时返回 null。 */

@@ -2,6 +2,7 @@ package com.group4.kaoyan.modules.admin.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.group4.kaoyan.common.R;
+import com.group4.kaoyan.modules.admin.dto.AdminUserVO;
 import com.group4.kaoyan.modules.admin.service.AdminService;
 import com.group4.kaoyan.modules.audit.annotation.AuditLog;
 import com.group4.kaoyan.modules.audit.entity.LoginLog;
@@ -11,6 +12,7 @@ import com.group4.kaoyan.modules.auth.entity.SysRole;
 import com.group4.kaoyan.modules.knowledge.service.KnowledgeService;
 import com.group4.kaoyan.modules.user.entity.SysUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,7 +28,7 @@ import java.util.List;
  * 后台：用户 / 角色 / 权限管理（RBAC 的维护入口）。
  */
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/v1/admin")
 @RequiredArgsConstructor
 public class AdminController {
 
@@ -43,12 +45,27 @@ public class AdminController {
     public record RoleCreateReq(String roleCode, String roleName, String description) {
     }
 
+    public record RoleUpdateReq(String roleName, String description) {
+    }
+
+    /**
+     * 用户分页列表：参数名与《接口设计文档 V1.1》1.7 节一致（page_num / page_size / status）。
+     * keyword 是项目扩展的模糊搜索，不影响文档约定。
+     */
     @SaCheckPermission("admin:user:list")
     @GetMapping("/users")
-    public R<R.PageData<SysUser>> users(@RequestParam(required = false) String keyword,
-                                        @RequestParam(defaultValue = "1") long page,
-                                        @RequestParam(defaultValue = "10") long size) {
-        return R.ok(adminService.pageUsers(keyword, page, size));
+    public R<R.PageData<AdminUserVO>> users(@RequestParam(required = false) String keyword,
+                                            @RequestParam(required = false) Integer status,
+                                            @RequestParam(name = "page_num", defaultValue = "1") long pageNum,
+                                            @RequestParam(name = "page_size", defaultValue = "20") long pageSize) {
+        return R.ok(adminService.pageUsers(keyword, status, pageNum, pageSize));
+    }
+
+    /** 用户详情：文档 13.2 节登记、此前代码缺失，本次补齐（权限码 admin:user:list）。 */
+    @SaCheckPermission("admin:user:list")
+    @GetMapping("/users/{id}")
+    public R<AdminUserVO> userDetail(@PathVariable Long id) {
+        return R.ok(adminService.userDetail(id));
     }
 
     @SaCheckPermission("admin:user:update")
@@ -80,6 +97,37 @@ public class AdminController {
     }
 
     @SaCheckPermission("admin:role:update")
+    @AuditLog(module = "admin", action = "UPDATE_ROLE", resourceType = "ROLE")
+    @PutMapping("/roles/{id}")
+    public R<SysRole> updateRole(@PathVariable Long id, @RequestBody RoleUpdateReq req) {
+        return R.ok(adminService.updateRole(id, req.roleName(), req.description()));
+    }
+
+    @SaCheckPermission("admin:role:update")
+    @AuditLog(module = "admin", action = "DELETE_ROLE", resourceType = "ROLE")
+    @DeleteMapping("/roles/{id}")
+    public R<Void> deleteRole(@PathVariable Long id) {
+        adminService.deleteRole(id);
+        return R.ok();
+    }
+
+    @SaCheckPermission("admin:user:update")
+    @AuditLog(module = "admin", action = "BIND_ROLE", resourceType = "USER")
+    @PostMapping("/users/{userId}/roles/{roleId}")
+    public R<Void> bindRole(@PathVariable Long userId, @PathVariable Long roleId) {
+        adminService.bindRole(userId, roleId);
+        return R.ok();
+    }
+
+    @SaCheckPermission("admin:user:update")
+    @AuditLog(module = "admin", action = "UNBIND_ROLE", resourceType = "USER")
+    @DeleteMapping("/users/{userId}/roles/{roleId}")
+    public R<Void> unbindRole(@PathVariable Long userId, @PathVariable Long roleId) {
+        adminService.unbindRole(userId, roleId);
+        return R.ok();
+    }
+
+    @SaCheckPermission("admin:role:update")
     @AuditLog(module = "admin", action = "CREATE_ROLE", resourceType = "ROLE")
     @PostMapping("/roles")
     public R<SysRole> createRole(@RequestBody RoleCreateReq req) {
@@ -90,6 +138,12 @@ public class AdminController {
     @GetMapping("/permissions")
     public R<List<SysPermission>> permissions() {
         return R.ok(adminService.listPermissions());
+    }
+
+    @SaCheckPermission("admin:role:list")
+    @GetMapping("/roles/{id}/permissions")
+    public R<List<String>> rolePermissions(@PathVariable Long id) {
+        return R.ok(adminService.permissionCodesOfRole(id));
     }
 
     @SaCheckPermission("admin:role:update")

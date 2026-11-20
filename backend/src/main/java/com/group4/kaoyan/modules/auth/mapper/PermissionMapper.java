@@ -13,16 +13,19 @@ import java.util.List;
 @Mapper
 public interface PermissionMapper extends BaseMapper<SysPermission> {
 
+    /** 用户的权限码（合并多角色、去重；停用角色不参与鉴权，所以联查时过滤 status）。 */
     @Select("SELECT DISTINCT p.perm_code FROM sys_permission p "
             + "JOIN sys_role_permission rp ON p.id = rp.permission_id "
             + "JOIN sys_user_role ur ON rp.role_id = ur.role_id "
-            + "WHERE ur.user_id = #{userId}")
+            + "JOIN sys_role r ON r.id = rp.role_id "
+            + "WHERE ur.user_id = #{userId} AND r.status = 1")
     List<String> selectPermCodesByUserId(@Param("userId") Long userId);
 
     @Select("SELECT DISTINCT p.* FROM sys_permission p "
             + "JOIN sys_role_permission rp ON p.id = rp.permission_id "
             + "JOIN sys_user_role ur ON rp.role_id = ur.role_id "
-            + "WHERE ur.user_id = #{userId}")
+            + "JOIN sys_role r ON r.id = rp.role_id "
+            + "WHERE ur.user_id = #{userId} AND r.status = 1")
     List<SysPermission> selectByUserId(@Param("userId") Long userId);
 
     @Select("SELECT p.perm_code FROM sys_permission p "

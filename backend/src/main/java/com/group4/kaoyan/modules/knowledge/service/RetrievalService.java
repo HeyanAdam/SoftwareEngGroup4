@@ -4,7 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.group4.kaoyan.common.BizException;
 import com.group4.kaoyan.common.config.AiProperties;
-import com.group4.kaoyan.modules.auth.RbacConstants;
+import com.group4.kaoyan.common.security.RoleConstants;
 import com.group4.kaoyan.modules.knowledge.entity.KbKnowledgeBase;
 import com.group4.kaoyan.modules.knowledge.mapper.KbMapper;
 import com.group4.kaoyan.platform.ai.embedding.EmbeddingClient;
@@ -50,7 +50,7 @@ public class RetrievalService {
 
     /** 返回 null 表示“当前用户没有可见知识库”，直接跳过检索 */
     private String buildExpr(Long kbId) {
-        if (StpUtil.hasRole(RbacConstants.ROLE_SYSTEM_ADMIN)) {
+        if (StpUtil.hasRole(RoleConstants.SYSTEM_ADMIN)) {
             if (kbId == null) {
                 return "id >= 0";
             }

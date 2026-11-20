@@ -3,7 +3,7 @@ package com.group4.kaoyan.modules.knowledge.service;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.group4.kaoyan.common.BizException;
-import com.group4.kaoyan.modules.auth.RbacConstants;
+import com.group4.kaoyan.common.security.RoleConstants;
 import com.group4.kaoyan.modules.knowledge.entity.KbDocument;
 import com.group4.kaoyan.modules.knowledge.entity.KbKnowledgeBase;
 import com.group4.kaoyan.modules.knowledge.mapper.ChunkMapper;
@@ -243,8 +243,8 @@ public class KnowledgeService {
     }
 
     private void requireContentWrite(String message) {
-        if (!StpUtil.hasRole(RbacConstants.ROLE_SYSTEM_ADMIN)
-                && !StpUtil.hasRole(RbacConstants.ROLE_CONTENT_OPERATOR)) {
+        if (!StpUtil.hasRole(RoleConstants.SYSTEM_ADMIN)
+                && !StpUtil.hasRole(RoleConstants.CONTENT_OPERATOR)) {
             throw new BizException(403, message);
         }
     }
@@ -264,8 +264,8 @@ public class KnowledgeService {
     }
 
     private boolean hasAnyContentRole() {
-        return StpUtil.hasRole(RbacConstants.ROLE_SYSTEM_ADMIN)
-                || StpUtil.hasRole(RbacConstants.ROLE_CONTENT_OPERATOR)
-                || StpUtil.hasRole(RbacConstants.ROLE_DATA_AUDITOR);
+        return StpUtil.hasRole(RoleConstants.SYSTEM_ADMIN)
+                || StpUtil.hasRole(RoleConstants.CONTENT_OPERATOR)
+                || StpUtil.hasRole(RoleConstants.DATA_AUDITOR);
     }
 }

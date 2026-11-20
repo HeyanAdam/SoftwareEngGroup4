@@ -1,127 +1,330 @@
 package com.group4.kaoyan.modules.auth.service;
 
+import cn.dev33.satoken.SaManager;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.crypto.digest.BCrypt;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.group4.kaoyan.common.BizException;
-import com.group4.kaoyan.modules.auth.RbacConstants;
+import com.group4.kaoyan.common.security.RbacSnapshotCache;
+import com.group4.kaoyan.common.security.RoleConstants;
+import com.group4.kaoyan.modules.auth.dto.LoginRequest;
+import com.group4.kaoyan.modules.auth.dto.PasswordResetRequest;
+import com.group4.kaoyan.modules.auth.dto.RegisterRequest;
 import com.group4.kaoyan.modules.auth.entity.SysRole;
-import com.group4.kaoyan.modules.user.entity.SysUser;
-import com.group4.kaoyan.modules.auth.mapper.PermissionMapper;
-import com.group4.kaoyan.modules.auth.mapper.RoleMapper;
 import com.group4.kaoyan.modules.audit.service.LoginLogService;
+import com.group4.kaoyan.modules.auth.mapper.RoleMapper;
+import com.group4.kaoyan.modules.auth.service.AuthIdempotencyService.Guard;
+import com.group4.kaoyan.modules.auth.support.AuthException;
+import com.group4.kaoyan.modules.auth.support.AuthTexts;
+import com.group4.kaoyan.modules.auth.support.ClientRequest;
+import com.group4.kaoyan.modules.auth.support.EmailCodePurpose;
+import com.group4.kaoyan.modules.auth.support.EmailMasker;
+import com.group4.kaoyan.modules.auth.support.LoginType;
+import com.group4.kaoyan.modules.auth.support.PasswordPolicy;
+import com.group4.kaoyan.modules.auth.vo.CurrentUserVO;
+import com.group4.kaoyan.modules.auth.vo.LoginVO;
+import com.group4.kaoyan.modules.auth.vo.RegisterVO;
+import com.group4.kaoyan.modules.user.entity.SysUser;
 import com.group4.kaoyan.modules.user.mapper.UserMapper;
+import com.group4.kaoyan.modules.user.mapper.UserProfileMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 
+/**
+ * 认证核心服务：账号密码登录、邮箱验证码登录、注册、重置密码、当前用户、退出登录。
+ *
+ * <p>登录失败一律返回 10002「账号或密码错误」，不区分账号不存在与密码错误；
+ * 账号锁定返回 423 + 10003；验证码相关返回 10005。</p>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
+    /** 匿名接口（注册、重置密码）在幂等表里用 0 占位 user_id */
+    private static final long ANONYMOUS_USER_ID = 0L;
+    private static final String ENDPOINT_REGISTER = "/api/v1/auth/register";
+    private static final String ENDPOINT_PASSWORD_RESET = "/api/v1/auth/password-reset";
+
     private final UserMapper userMapper;
     private final RoleMapper roleMapper;
-    private final PermissionMapper permissionMapper;
+    private final UserProfileMapper userProfileMapper;
+    private final CaptchaService captchaService;
+    private final EmailCodeService emailCodeService;
+    private final LoginAttemptService loginAttemptService;
+    private final SessionService sessionService;
     private final LoginLogService loginLogService;
+    private final AuthIdempotencyService AuthIdempotencyService;
+    /** 权限快照缓存：与 StpInterfaceImpl 共用，保证「登录返回的角色权限」和「注解鉴权」口径一致 */
+    private final RbacSnapshotCache rbacSnapshotCache;
+    private final TransactionTemplate transactionTemplate;
 
-    /**
-     * 注册即分配角色：库里还没有任何管理员时，第一个注册的人直接成为管理员（只发生一次）；
-     * 之后注册的一律是 STUDENT，要当管理员由已有管理员在后台提权。
-     *
-     * synchronized 是为了让“判断有没有管理员 + 绑定角色”这两步不被并发注册穿插，
-     * 避免前两个并发注册的人同时成为管理员。
-     */
-    @Transactional
-    public synchronized void register(String username, String rawPassword, String nickname) {
-        if (username == null || username.isBlank() || rawPassword == null || rawPassword.isBlank()) {
-            throw new BizException("用户名和密码不能为空");
-        }
-        if (userMapper.selectCount(Wrappers.<SysUser>lambdaQuery().eq(SysUser::getUsername, username)) > 0) {
-            throw new BizException("用户名已存在");
-        }
-        SysUser user = new SysUser();
-        user.setUsername(username.trim());
-        user.setPasswordHash(BCrypt.hashpw(rawPassword));
-        user.setNickname(nickname == null || nickname.isBlank() ? username : nickname);
-        user.setStatus(1);
-        user.setCreateTime(LocalDateTime.now());
-        user.setUpdateTime(LocalDateTime.now());
-        userMapper.insert(user);
+    // ==================== 登录 ====================
 
-        SysRole role = resolveRegisterRole();
-        if (role == null) {
-            log.warn("注册时没找到可用角色，用户 {} 未绑定角色，请检查 RBAC 初始化", user.getUsername());
-            return;
+    public LoginVO login(LoginRequest request, ClientRequest client) {
+        LoginType loginType = LoginType.parse(request.getLoginType());
+        return switch (loginType) {
+            case PASSWORD -> loginByPassword(request, client);
+            case EMAIL_CODE -> loginByEmailCode(request, client);
+        };
+    }
+
+    private LoginVO loginByPassword(LoginRequest request, ClientRequest client) {
+        String account = AuthTexts.requireText(request.getAccount(), "账号不能为空");
+        String password = AuthTexts.requireText(request.getPassword(), "密码不能为空");
+
+        long lockedSeconds = loginAttemptService.lockedSeconds(account);
+        if (lockedSeconds > 0) {
+            loginLogService.record(null, account, false, "账号锁定中");
+            throw AuthException.locked(lockedSeconds);
         }
-        roleMapper.bindUserRole(user.getId(), role.getId());
-        if (RbacConstants.ROLE_SYSTEM_ADMIN.equals(role.getRoleCode())) {
-            log.info("系统内暂无管理员，首个注册用户 {} 已自动成为管理员", user.getUsername());
+
+        // 校验图形验证码（一次性，输错计数在 CaptchaService 内处理）
+        captchaService.verify(request.getCaptchaKey(), request.getCaptchaCode());
+
+        SysUser user = findByAccount(account);
+        if (user == null) {
+            loginAttemptService.onFailure(account, client.ipKey());
+            loginLogService.record(null, account, false, "账号不存在");
+            log.info("登录失败：账号不存在, account={}, ip={}", account, client.ip());
+            throw AuthException.badCredentials();
+        }
+        if (isDisabled(user)) {
+            loginLogService.record(user.getId(), account, false, "账号已禁用");
+            throw AuthException.disabled();
+        }
+        if (!BCrypt.checkpw(password, user.getPasswordHash())) {
+            int failures = loginAttemptService.onFailure(account, client.ipKey());
+            loginLogService.record(user.getId(), account, false, "密码错误");
+            log.info("登录失败：密码错误, account={}, ip={}, failures={}", account, client.ip(), failures);
+            throw AuthException.badCredentials();
+        }
+
+        loginAttemptService.onSuccess(account, client.ipKey());
+        return issueToken(user, client);
+    }
+
+    private LoginVO loginByEmailCode(LoginRequest request, ClientRequest client) {
+        String email = AuthTexts.normalizeEmail(request.getEmail());
+        String verifyCode = AuthTexts.requireText(request.getVerifyCode(), "验证码不能为空");
+
+        emailCodeService.consume(email, EmailCodePurpose.EMAIL_LOGIN, verifyCode);
+
+        SysUser user = findByEmail(email);
+        if (user == null) {
+            loginLogService.record(null, email, false, "邮箱未注册");
+            throw AuthException.userNotFound("用户不存在");
+        }
+        if (isDisabled(user)) {
+            loginLogService.record(user.getId(), email, false, "账号已禁用");
+            throw AuthException.disabled();
+        }
+        return issueToken(user, client);
+    }
+
+    /** 登录成功：签发 Sa-Token，返回角色与权限快照，并写入登录日志。 */
+    private LoginVO issueToken(SysUser user, ClientRequest client) {
+        StpUtil.login(user.getId());
+        String token = StpUtil.getTokenValue();
+
+        LoginVO vo = new LoginVO();
+        vo.setToken(token);
+        vo.setTokenType("Bearer");
+        vo.setExpiresIn(SaManager.getConfig().getTimeout());
+        vo.setUserId(user.getId());
+        vo.setUsername(user.getUsername());
+        vo.setNickname(user.getNickname());
+        RbacSnapshotCache.Snapshot snapshot = rbacSnapshotCache.get(user.getId());
+        vo.setRoles(snapshot.roles());
+        vo.setPermissions(snapshot.permissions());
+        vo.setHasProfile(userProfileMapper.countByUserId(user.getId()) > 0);
+
+        loginLogService.record(user.getId(), user.getUsername(), true, null);
+        return vo;
+    }
+
+    // ==================== 注册 ====================
+
+    public RegisterVO register(RegisterRequest request, String idempotencyKey, ClientRequest client) {
+        if (!Boolean.TRUE.equals(request.getAgreeAgreement())) {
+            throw AuthException.paramInvalid("请先阅读并同意用户协议");
+        }
+        String username = AuthTexts.normalizeUsername(request.getUsername());
+        String email = AuthTexts.normalizeEmail(request.getEmail());
+        PasswordPolicy.validateMatch(request.getPassword(), request.getConfirmPassword());
+        String verifyCode = AuthTexts.requireText(request.getVerifyCode(), "验证码不能为空");
+
+        Guard guard = AuthIdempotencyService.begin(ANONYMOUS_USER_ID, ENDPOINT_REGISTER, idempotencyKey,
+                AuthIdempotencyService.requestHash(username, email, verifyCode));
+        if (guard.hasCache()) {
+            return AuthIdempotencyService.readCache(guard, RegisterVO.class);
+        }
+
+        try {
+            RegisterVO vo = transactionTemplate.execute(status ->
+                    createAccount(username, email, verifyCode, request));
+            AuthIdempotencyService.success(guard, 0, vo);
+            return vo;
+        } catch (RuntimeException e) {
+            AuthIdempotencyService.failure(guard);
+            throw e;
         }
     }
 
-    private SysRole resolveRegisterRole() {
-        if (roleMapper.countUsersWithRoleCode(RbacConstants.ROLE_SYSTEM_ADMIN) == 0) {
-            SysRole admin = findRole(RbacConstants.ROLE_SYSTEM_ADMIN);
-            if (admin != null) {
-                return admin;
-            }
+    /** 注册事务体：查重 → 消费验证码 → 落库 → 绑定 STUDENT → 建立登录态。 */
+    private RegisterVO createAccount(String username, String email, String verifyCode, RegisterRequest request) {
+        if (countByUsername(username) > 0) {
+            throw AuthException.accountExists("账号已存在");
         }
-        return findRole(RbacConstants.ROLE_STUDENT);
+        if (countByEmail(email) > 0) {
+            throw AuthException.accountExists("邮箱已被注册");
+        }
+        emailCodeService.consume(email, EmailCodePurpose.REGISTER, verifyCode);
+
+        SysUser user = new SysUser();
+        user.setUsername(username);
+        user.setEmail(email);
+        user.setPasswordHash(BCrypt.hashpw(request.getPassword()));
+        user.setNickname(AuthTexts.normalizeNickname(request.getNickname(), username));
+        user.setStatus(1);
+        user.setCreateTime(LocalDateTime.now());
+        user.setUpdateTime(LocalDateTime.now());
+        try {
+            userMapper.insert(user);
+        } catch (DuplicateKeyException e) {
+            throw AuthException.accountExists("账号已存在");
+        }
+
+        // 接口文档 3.2：注册不得自动把第一个注册用户设为管理员，一律绑定 STUDENT
+        SysRole studentRole = findRole(RoleConstants.STUDENT);
+        if (studentRole == null) {
+            log.warn("注册时未找到 STUDENT 角色，用户 {} 尚未绑定角色，请检查 RbacInitializer", username);
+        } else {
+            roleMapper.bindUserRole(user.getId(), studentRole.getId());
+            // 新用户刚落库，清掉可能存在的空快照，避免首次鉴权拿着空权限
+            rbacSnapshotCache.evict(user.getId());
+        }
+
+        StpUtil.login(user.getId());
+        RegisterVO vo = new RegisterVO();
+        vo.setUserId(user.getId());
+        vo.setUsername(user.getUsername());
+        vo.setNickname(user.getNickname());
+        vo.setToken(StpUtil.getTokenValue());
+        vo.setTokenType("Bearer");
+        log.info("注册成功: userId={}, username={}", user.getId(), username);
+        return vo;
+    }
+
+    // ==================== 重置密码 ====================
+
+    public void resetPassword(PasswordResetRequest request, String idempotencyKey, ClientRequest client) {
+        String email = AuthTexts.normalizeEmail(request.getEmail());
+        PasswordPolicy.validateMatch(request.getNewPassword(), request.getConfirmPassword());
+        String verifyCode = AuthTexts.requireText(request.getVerifyCode(), "验证码不能为空");
+
+        Guard guard = AuthIdempotencyService.begin(ANONYMOUS_USER_ID, ENDPOINT_PASSWORD_RESET, idempotencyKey,
+                AuthIdempotencyService.requestHash(email, verifyCode));
+        if (guard.hasCache()) {
+            return;
+        }
+
+        try {
+            Long userId = transactionTemplate.execute(status -> {
+                emailCodeService.consume(email, EmailCodePurpose.RESET_PASSWORD, verifyCode);
+                SysUser user = findByEmail(email);
+                if (user == null) {
+                    throw AuthException.userNotFound("用户不存在");
+                }
+                user.setPasswordHash(BCrypt.hashpw(request.getNewPassword()));
+                user.setUpdateTime(LocalDateTime.now());
+                userMapper.updateById(user);
+                return user.getId();
+            });
+
+            // 密码变了，旧登录态必须全部失效（接口文档 3.6）
+            if (userId != null) {
+                sessionService.logoutUser(userId);
+                loginLogService.record(userId, email, true, "重置密码");
+            }
+            AuthIdempotencyService.success(guard, 0, Boolean.TRUE);
+        } catch (RuntimeException e) {
+            AuthIdempotencyService.failure(guard);
+            throw e;
+        }
+    }
+
+    // ==================== 当前用户 / 退出 ====================
+
+    public CurrentUserVO currentUser() {
+        Long userId = StpUtil.getLoginIdAsLong();
+        SysUser user = userMapper.selectById(userId);
+        if (user == null) {
+            throw AuthException.userNotFound("用户不存在");
+        }
+        CurrentUserVO vo = new CurrentUserVO();
+        vo.setUserId(user.getId());
+        vo.setUsername(user.getUsername());
+        vo.setNickname(user.getNickname());
+        vo.setEmailMasked(EmailMasker.mask(user.getEmail()));
+        RbacSnapshotCache.Snapshot snapshot = rbacSnapshotCache.get(userId);
+        vo.setRoles(snapshot.roles());
+        vo.setPermissions(snapshot.permissions());
+        vo.setHasProfile(userProfileMapper.countByUserId(userId) > 0);
+        return vo;
+    }
+
+    public void logout() {
+        sessionService.logoutCurrentSession();
+    }
+
+    // ==================== 查询辅助 ====================
+
+    private SysUser findByAccount(String account) {
+        SysUser byUsername = userMapper.selectOne(Wrappers.<SysUser>lambdaQuery()
+                .eq(SysUser::getUsername, account)
+                .last("LIMIT 1"));
+        if (byUsername != null) {
+            return byUsername;
+        }
+        return findByEmail(account.toLowerCase(Locale.ROOT));
+    }
+
+    private SysUser findByEmail(String email) {
+        return userMapper.selectOne(Wrappers.<SysUser>lambdaQuery()
+                .apply("LOWER(email) = {0}", email)
+                .last("LIMIT 1"));
+    }
+
+    private long countByUsername(String username) {
+        return userMapper.selectCount(Wrappers.<SysUser>lambdaQuery().eq(SysUser::getUsername, username));
+    }
+
+    private long countByEmail(String email) {
+        return userMapper.selectCount(Wrappers.<SysUser>lambdaQuery().apply("LOWER(email) = {0}", email));
     }
 
     private SysRole findRole(String roleCode) {
         return roleMapper.selectOne(Wrappers.<SysRole>lambdaQuery().eq(SysRole::getRoleCode, roleCode));
     }
 
-    public LoginResult login(String username, String rawPassword) {
-        String account = username == null ? "" : username.trim();
-        SysUser user = userMapper.selectOne(Wrappers.<SysUser>lambdaQuery()
-                .eq(SysUser::getUsername, account));
-        // 成功与失败都写登录日志；日志走独立事务 + 内部吞异常，不影响登录结果
-        if (user == null) {
-            loginLogService.record(null, account, false, "账号不存在");
-            throw new BizException(401, "用户名或密码错误");
-        }
-        if (user.getPasswordHash() == null || !BCrypt.checkpw(rawPassword, user.getPasswordHash())) {
-            loginLogService.record(user.getId(), account, false, "密码错误");
-            throw new BizException(401, "用户名或密码错误");
-        }
-        if (user.getStatus() != null && user.getStatus() == 0) {
-            loginLogService.record(user.getId(), account, false, "账号已被禁用");
-            throw new BizException(403, "账号已被禁用");
-        }
-        StpUtil.login(user.getId());
-        String token = StpUtil.getTokenValue();
-        loginLogService.record(user.getId(), account, true, null);
-        List<String> roles = roleMapper.selectRoleCodesByUserId(user.getId());
-        List<String> perms = permissionMapper.selectPermCodesByUserId(user.getId());
-        return new LoginResult(token, user.getId(), user.getUsername(), user.getNickname(), roles, perms);
+    private boolean isDisabled(SysUser user) {
+        return user.getStatus() != null && user.getStatus() == 0;
     }
 
-    public UserInfo currentUser() {
-        Long userId = StpUtil.getLoginIdAsLong();
-        SysUser user = userMapper.selectById(userId);
-        if (user == null) {
-            throw new BizException(401, "用户不存在");
-        }
-        return new UserInfo(user,
-                roleMapper.selectRoleCodesByUserId(userId),
-                permissionMapper.selectPermCodesByUserId(userId));
+    /** 供 P2/P3 复用的权限快照查询：与 StpInterfaceImpl 走同一份缓存。 */
+    public List<String> permissionsOf(Long userId) {
+        return rbacSnapshotCache.get(userId).permissions();
     }
 
-    public void logout() {
-        StpUtil.logout();
-    }
-
-    public record LoginResult(String token, Long userId, String username,
-                              String nickname, List<String> roles, List<String> permissions) {
-    }
-
-    public record UserInfo(SysUser user, List<String> roles, List<String> permissions) {
+    public List<String> rolesOf(Long userId) {
+        return rbacSnapshotCache.get(userId).roles();
     }
 }
+

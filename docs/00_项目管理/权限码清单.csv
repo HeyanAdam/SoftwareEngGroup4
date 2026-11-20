@@ -1,0 +1,21 @@
+perm_code,perm_name,module,api_paths,SYSTEM_ADMIN,STUDENT,CONTENT_OPERATOR,DATA_AUDITOR,source,remark
+study-plan:view,查看学习计划,督学陪伴,"GET /api/v1/study-plans;GET /api/v1/study-plans/{plan_id};GET /api/v1/study-plans/today",1,0,0,0,启动补齐,学生建议授权待评审
+study-plan:create,生成学习计划,督学陪伴,POST /api/v1/study-plans,1,0,0,0,启动补齐,学生建议授权待评审
+study-plan:update,调整学习计划,督学陪伴,POST /api/v1/study-plans/{plan_id}/adjust,1,0,0,0,启动补齐,学生建议授权待评审
+study-task:update,更新任务状态,督学陪伴,PATCH /api/v1/study-tasks/{task_id},1,0,0,0,启动补齐,学生建议授权待评审
+question:view,浏览题库,刷题训练,"GET /api/v1/questions;GET /api/v1/questions/{question_id};GET /api/v1/questions/random",1,0,0,0,启动补齐,学生建议授权待评审
+file:view,文件列表,文件存储,GET /api/v1/files,1,0,0,0,启动补齐,学生与内容运营建议授权待评审
+file:upload,上传文件,文件存储,"POST /api/v1/files/batch;POST /api/v1/files/upload-sessions",1,0,0,0,启动补齐,学生建议授权待评审
+file:download,下载文件,文件存储,GET /api/v1/files/{file_id}/content,1,0,0,0,启动补齐,学生建议授权待评审
+file:delete,删除文件,文件存储,DELETE /api/v1/files/{file_id},1,0,0,0,启动补齐,学生建议授权待评审
+kb:view,查看知识库,知识库,"GET /api/v1/knowledge-bases;GET /api/v1/knowledge-bases/{kb_id};GET /api/v1/knowledge-bases/{kb_id}/documents;GET /api/v1/knowledge-documents/{document_id}",1,0,1,1,V6已有,学生不得直接浏览知识库
+kb:create,创建知识库,知识库,POST /api/v1/knowledge-bases,1,0,1,0,V6已有,
+kb:delete,删除知识库,知识库,DELETE /api/v1/knowledge-bases/{kb_id},1,0,1,0,V6已有,
+doc:upload,上传文档,知识库,"POST /api/v1/knowledge-bases/{kb_id}/documents;POST /api/v1/knowledge-documents/{document_id}/reparse",1,0,1,0,V6已有,
+doc:delete,删除文档,知识库,DELETE /api/v1/knowledge-documents/{document_id},1,0,1,0,V6已有,
+chat:send,智能问答,AI 对话,POST /api/v1/chat/conversations/{conversation_id}/messages/stream,1,1,0,0,V6已有,学生默认唯一权限
+admin:user:list,用户列表,后台管理,"GET /api/v1/admin/users;GET /api/v1/admin/users/{user_id};GET /api/v1/admin/users/{user_id}/roles",1,0,0,1,V6已有,
+admin:user:update,用户管理,后台管理,"PUT /api/v1/admin/users/{user_id}/status;PUT /api/v1/admin/users/{user_id}/roles",1,0,0,0,V6已有,
+admin:role:list,角色列表,后台管理,"GET /api/v1/admin/roles;GET /api/v1/admin/permissions",1,0,0,1,V6已有,
+admin:role:update,角色权限管理,后台管理,"POST /api/v1/admin/roles;PUT /api/v1/admin/roles/{role_id}/permissions",1,0,0,0,V6已有,
+admin:vector:manage,向量库管理,后台管理,POST /api/v1/admin/knowledge-bases/{kb_id}/vectors/rebuild,1,0,1,0,V6已有,
