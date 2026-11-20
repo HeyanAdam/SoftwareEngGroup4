@@ -150,7 +150,9 @@ Report '学生登录' 'code=0 且 roles=[STUDENT]' "code=$($stuLogin.code) roles
 # ---------- 3. 权限矩阵（接口级） ----------
 $stuMe = Http-Status 'GET' "$Base/api/v1/auth/me" @{ Authorization = "Bearer $stuToken" }
 $stuPerms = ($stuMe.Body | ConvertFrom-Json).data.permissions
-Report '学生 /auth/me 权限清单' '仅 chat:send' "$($stuPerms -join ',')" (($stuPerms.Count -eq 1) -and ($stuPerms[0] -eq 'chat:send')) ''
+$expectPerms = @('chat:send', 'file:view', 'file:upload', 'file:download', 'file:delete')
+$hasAllPerms = -not ($expectPerms | Where-Object { $stuPerms -notcontains $_ })
+Report '学生 /auth/me 权限清单' 'chat:send + 4 条 file:*' "$($stuPerms -join ',')" $hasAllPerms 'V8 种子给 STUDENT 补了 file 域权限（文档 10.1）'
 
 $stuAdmin = Http-Status 'GET' "$Base/api/v1/admin/users" @{ Authorization = "Bearer $stuToken" }
 $stuAdminCode = try { ($stuAdmin.Body | ConvertFrom-Json).code } catch { $null }
@@ -187,9 +189,29 @@ Report '禁用后旧 token 失效' '401 + 10001' "$($oldToken.Status)" ($oldToke
 Http-Json 'PUT' "$Base/api/v1/admin/users/$stuId/status" @{ Authorization = "Bearer $adminToken" } @{ status = 1 } | Out-Null
 Report '复原学生账号状态' 'status=1' '已复原' $true ''
 
-# ---------- 6. 已知缺口（不在本轮验收内） ----------
-Skip '学生越权读他人会话' '403 + 10009' 'DataScopeService.requireSelf 尚未接入业务接口（改造清单 B 项，主责 P3）'
-Skip '改密后其他会话失效' '旧 token 401' 'UserService.changePassword 未调 logoutUser（改造清单 C 项，主责 P1）'
+# ---------- 6. 越权（10009）与改密吊销（真机） ----------
+# 禁用用例把 student1 的 token 踢掉了，这里重新登录取新 token
+$stuToken = (Login 'student1' 'Student@123456').data.token
+
+# 6.1 造一条"属于 student2"的会话，再用 student1 的 token 去读 → 期望 403 + 10009
+Ensure-User 'student2' 'student2@kaoyan.local' 'Student@123456' '学生二号'
+Sql "INSERT INTO chat_conversation (user_id, title, deleted) SELECT id, '越权用例', 0 FROM sys_user WHERE username='student2'" | Out-Null
+$convId = SqlNum "SELECT MAX(id) FROM chat_conversation WHERE user_id=(SELECT id FROM sys_user WHERE username='student2')"
+$cross = Http-Status 'GET' "$Base/api/v1/chat/conversations/$convId/messages" @{ Authorization = "Bearer $stuToken" }
+$crossCode = try { ($cross.Body | ConvertFrom-Json).code } catch { $null }
+Report '学生越权读他人会话' '403 + 10009' "$($cross.Status) code=$crossCode" (($cross.Status -eq 403) -and ($crossCode -eq 10009)) 'ChatService#requireOwned：他人数据 403+10009'
+Sql "DELETE FROM chat_conversation WHERE id=$convId" | Out-Null
+
+# 6.2 改密后吊销全部会话 → 期望旧 token 401
+$pwdToken = $stuToken
+$pwd = Http-Json 'PUT' "$Base/api/v1/user/password" @{ Authorization = "Bearer $pwdToken" } @{ oldPassword = 'Student@123456'; newPassword = 'Student@654321' }
+$afterPwd = Http-Status 'GET' "$Base/api/v1/auth/me" @{ Authorization = "Bearer $pwdToken" }
+Report '改密后其他会话失效' '旧 token 401 + 10001' "$($afterPwd.Status)" ($afterPwd.Status -eq 401) 'UserService.changePassword 调 SessionService.logoutUser'
+
+# 复原密码，保证脚本可重复执行
+$back = Login 'student1' 'Student@654321'
+Http-Json 'PUT' "$Base/api/v1/user/password" @{ Authorization = "Bearer $($back.data.token)" } @{ oldPassword = 'Student@654321'; newPassword = 'Student@123456' } | Out-Null
+Report '复原学生密码' 'Student@123456' '已复原' ($back.code -eq 0) ''
 
 # ---------- 输出 ----------
 Write-Host ''
