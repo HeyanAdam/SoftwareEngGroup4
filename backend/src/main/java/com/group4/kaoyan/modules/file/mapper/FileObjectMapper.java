@@ -1,10 +1,12 @@
 package com.group4.kaoyan.modules.file.mapper;
 
+import org.apache.ibatis.annotations.Mapper;
 import com.group4.kaoyan.modules.file.entity.FileObject;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
+@Mapper
 public interface FileObjectMapper {
 
     int insert(FileObject file);
