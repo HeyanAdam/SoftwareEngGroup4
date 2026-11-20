@@ -66,10 +66,18 @@ spring:
     default-encoding: UTF-8
     properties:
       mail:
+        # 关键：Jakarta Mail 生成 Message-ID 时会调 InetAddress.getCanonicalHostName() 做反向 DNS，
+        # Windows 上这一步会卡 20 秒（实测接口耗时 20.9s）。显式给 mail.from 后跳过该解析，
+        # 实测降到 200ms 级。localhost 与超时是第二道保险。
+        from: ${MAIL_FROM:no-reply@kaoyan.local}
         smtp:
           auth: ${MAIL_SMTP_AUTH:false}
           starttls:
             enable: ${MAIL_STARTTLS:false}
+          localhost: ${MAIL_HELO_HOST:kaoyan.local}
+          connectiontimeout: ${MAIL_CONNECTION_TIMEOUT:5000}
+          timeout: ${MAIL_READ_TIMEOUT:5000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT:5000}
 
   # ============ RabbitMQ 配置 新增 ============
   rabbitmq:

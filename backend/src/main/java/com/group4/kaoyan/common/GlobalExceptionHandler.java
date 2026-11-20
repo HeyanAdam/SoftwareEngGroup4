@@ -30,17 +30,18 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
-    public R<Void> handleBiz(BizException e) {
-        return R.fail(e.getCode(), e.getMessage());
+    public ResponseEntity<R<Void>> handleBiz(BizException e) {
+        return ResponseEntity.status(statusFor(e.getCode()))
+                .body(R.fail(e.getCode(), e.getMessage()));
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
-    public R<Void> handleValid(Exception e) {
+    public ResponseEntity<R<Void>> handleValid(Exception e) {
         FieldError fe = e instanceof MethodArgumentNotValidException m
                 ? m.getBindingResult().getFieldError()
                 : ((BindException) e).getBindingResult().getFieldError();
         String msg = fe == null ? "参数校验失败" : fe.getField() + " " + fe.getDefaultMessage();
-        return R.fail(10000, msg);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(R.fail(10000, msg));
     }
 
     @ExceptionHandler(NotLoginException.class)
@@ -64,8 +65,23 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public R<Void> handleOther(Exception e) {
+    public ResponseEntity<R<Void>> handleOther(Exception e) {
         log.error("未处理异常", e);
-        return R.fail(90000, "服务器内部异常");
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(R.fail(90000, "服务器内部异常"));
+    }
+
+    /** 错误码 → HTTP 状态，口径见《接口设计文档 V1.1》2.1。 */
+    private HttpStatus statusFor(int code) {
+        return switch (code) {
+            case 10000, 10005, 10006, 10012 -> HttpStatus.BAD_REQUEST;
+            case 10001, 10002 -> HttpStatus.UNAUTHORIZED;
+            case 10003 -> HttpStatus.LOCKED;
+            case 10004, 10011 -> HttpStatus.CONFLICT;
+            case 10007 -> HttpStatus.NOT_FOUND;
+            case 10008, 10009, 10013 -> HttpStatus.FORBIDDEN;
+            case 10010 -> HttpStatus.TOO_MANY_REQUESTS;
+            default -> HttpStatus.INTERNAL_SERVER_ERROR;
+        };
     }
 }
