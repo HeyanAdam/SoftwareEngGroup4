@@ -2,11 +2,7 @@
   <div class="file-page">
     <div class="page-header">
       <h2>我的文件</h2>
-      <UploadEntry
-        :scene="currentScene"
-        @completed="handleUploadCompleted"
-        @failed="handleUploadFailed"
-      />
+      <UploadEntry :scene="currentScene" :engine="uploadEngine" />
     </div>
 
     <div class="filters">
@@ -25,14 +21,22 @@
         style="width: 320px"
       />
       <el-button :loading="loading" @click="loadFiles">刷新</el-button>
-      <span class="tip">共 {{ total }} 个文件，当前页过滤结果 {{ visibleFiles.length }} 条</span>
+      <span class="tip">
+        共 {{ total }} 个文件，当前页过滤结果 {{ visibleFiles.length }} 条
+        <template v-if="visibleUploadTasks.length > 0">
+          ，上传任务 {{ visibleUploadTasks.length }} 个
+        </template>
+      </span>
     </div>
 
     <FileTable
       :files="visibleFiles"
+      :upload-tasks="visibleUploadTasks"
       :loading="loading"
       @download="handleDownload"
       @remove="handleRemove"
+      @toggle-upload="handleToggleUpload"
+      @cancel-upload="handleCancelUpload"
     />
 
     <div class="pager">
@@ -50,12 +54,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FileTable from './components/FileTable.vue'
 import UploadEntry from './upload/UploadEntry.vue'
 import { deleteFile, getDownloadUrl, listFiles } from './file.api'
-import type { FileObject, FileScene } from './types'
+import { UploadEngine } from './uploader'
+import type { FileObject, FileScene, UploadTask } from './types'
 
 const SCENE_OPTIONS: Array<{ value: '' | FileScene; label: string }> = [
   { value: '', label: '全部场景' },
@@ -74,6 +79,11 @@ const size = ref(10)
 const scene = ref<'' | FileScene>('')
 const keyword = ref('')
 
+const uploadEngine = new UploadEngine({
+  onCompleted: (task, file) => handleUploadCompleted(task, file),
+  onFailed: (_task, error) => handleUploadFailed(error),
+})
+
 /** 上传时使用的场景：筛选为“全部”时默认落到学习资料 */
 const currentScene = computed<FileScene>(() => scene.value || 'STUDY_MATERIAL')
 
@@ -84,6 +94,15 @@ const visibleFiles = computed<FileObject[]>(() => {
   return files.value.filter((file) =>
     file.originalFilename.toLowerCase().includes(key),
   )
+})
+
+const visibleUploadTasks = computed<UploadTask[]>(() => {
+  const key = keyword.value.trim().toLowerCase()
+  return uploadEngine.tasks.filter((task) => {
+    if (task.status === 'COMPLETED') return false
+    if (scene.value && task.scene !== scene.value) return false
+    return !key || task.fileName.toLowerCase().includes(key)
+  })
 })
 
 function errorMessage(error: unknown): string {
@@ -119,7 +138,7 @@ function handleSizeChange(): void {
   void loadFiles()
 }
 
-function handleUploadCompleted(file: FileObject): void {
+function handleUploadCompleted(_task: UploadTask, file: FileObject): void {
   const duplicated = files.value.some((item) => item.id === file.id)
   if (duplicated) {
     // 后端同用户同 hash 会秒传复用旧记录，列表不会新增行
@@ -130,8 +149,26 @@ function handleUploadCompleted(file: FileObject): void {
   void loadFiles()
 }
 
-function handleUploadFailed(message: string): void {
-  ElMessage.error(message)
+function handleUploadFailed(error: Error): void {
+  ElMessage.error(error.message || '上传失败，请稍后重试')
+}
+
+function handleToggleUpload(task: UploadTask): void {
+  if (task.status === 'PAUSED') {
+    uploadEngine.resumeTask(task.id)
+    return
+  }
+  if (task.status === 'FAILED') {
+    uploadEngine.retryTask(task.id)
+    return
+  }
+  uploadEngine.pauseTask(task.id)
+}
+
+async function handleCancelUpload(task: UploadTask): Promise<void> {
+  const cancelRequest = uploadEngine.cancelTask(task.id)
+  uploadEngine.removeTask(task.id)
+  await cancelRequest
 }
 
 async function handleDownload(file: FileObject): Promise<void> {
@@ -179,6 +216,10 @@ async function handleRemove(file: FileObject): Promise<void> {
 
 onMounted(() => {
   void loadFiles()
+})
+
+onUnmounted(() => {
+  uploadEngine.dispose()
 })
 </script>
 

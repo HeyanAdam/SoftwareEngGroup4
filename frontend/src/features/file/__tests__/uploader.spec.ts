@@ -58,6 +58,8 @@ interface FakeApiOptions {
   transientPartFailures?: number
   /** 分片上传耗时，用于观察并发与取消窗口 */
   partDelayMs?: number
+  /** 小文件直传耗时，用于观察取消窗口 */
+  smallDelayMs?: number
 }
 
 function createFakeApi(options: FakeApiOptions = {}): { api: FileApiPort; stats: FakeApiStats } {
@@ -84,11 +86,25 @@ function createFakeApi(options: FakeApiOptions = {}): { api: FileApiPort; stats:
   }
 
   const api: FileApiPort = {
-    async uploadSmall(file, scene) {
+    async uploadSmall(file, scene, _onProgress, signal) {
       if (options.unauthorized) {
         throw new FileApiError({ message: '登录已失效，请重新登录', httpStatus: 401 })
       }
       stats.uploadSmall++
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      if (options.smallDelayMs) {
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, options.smallDelayMs)
+          signal?.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer)
+              reject(new DOMException('Aborted', 'AbortError'))
+            },
+            { once: true },
+          )
+        })
+      }
       return fileObject(scene, file, 1001)
     },
     async uploadBatch(files, scene) {
@@ -283,6 +299,48 @@ describe('UploadEngine 上传状态机', () => {
     expect(tasks[0]?.status).toBe('CANCELLED')
     expect(stats.cancel).toContain(sessionId)
     expect(readResumeRecords()).toHaveLength(0)
+  })
+
+  it('哈希阶段取消：不再创建上传会话', async () => {
+    const { api, stats } = createFakeApi()
+    let releaseHash: ((hash: string) => void) | undefined
+    const hasher = {
+      hashFile: () =>
+        new Promise<string>((resolve) => {
+          releaseHash = resolve
+        }),
+      hashBlob: async () => 'hash-of-part',
+    }
+    const engine = new UploadEngine({ api, hasher })
+
+    const tasks = engine.addFiles([fakeFile('big.iso', 60 * 1024 * 1024)], 'STUDY_MATERIAL')
+    engine.start()
+    await waitFor(() => tasks[0]?.status === 'HASHING')
+
+    await engine.cancelTask(tasks[0]?.id ?? '')
+    engine.removeTask(tasks[0]?.id ?? '')
+    expect(engine.tasks).toHaveLength(0)
+
+    releaseHash?.('hash-of-whole-file')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(stats.initSession).toBe(0)
+    expect(stats.uploadParts).toHaveLength(0)
+  })
+
+  it('小文件直传取消：中断请求并保持 CANCELLED', async () => {
+    const { api, stats } = createFakeApi({ smallDelayMs: 500 })
+    const engine = new UploadEngine({ api, hasher: fakeHasher })
+
+    const tasks = engine.addFiles([fakeFile('small.pdf', 1024)], 'STUDY_MATERIAL')
+    engine.start()
+    await waitFor(() => tasks[0]?.status === 'UPLOADING')
+
+    await engine.cancelTask(tasks[0]?.id ?? '')
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    expect(stats.uploadSmall).toBe(1)
+    expect(tasks[0]?.status).toBe('CANCELLED')
   })
 
   it('Token 失效（401）：任务失败并提示重新登录', async () => {

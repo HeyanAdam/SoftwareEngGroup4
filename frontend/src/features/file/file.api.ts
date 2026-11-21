@@ -25,6 +25,7 @@ export function uploadSmall(
   file: File,
   scene: FileScene,
   onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<FileObject> {
   if (isFileMockEnabled()) return mockFileApi.uploadSmall(file, scene, onProgress)
 
@@ -33,6 +34,7 @@ export function uploadSmall(
   return filePost<FileObject>(FILES, form, {
     params: { scene },
     timeout: 120000,
+    signal,
     onUploadProgress: (event) => {
       if (!onProgress || !event.total) return
       onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)))

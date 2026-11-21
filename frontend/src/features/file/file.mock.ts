@@ -104,14 +104,18 @@ const sessionStore = new Map<number, UploadSession>()
 
  /** Mock 版文件接口，签名与 file.api.ts 完全一致 */
 export const mockFileApi = {
-  uploadSmall(
+  async uploadSmall(
     _file: File,
     scene: FileScene,
     _onProgress?: (percent: number) => void,
   ): Promise<FileObject> {
     const error = scenarioError()
-    if (error) return Promise.reject(error)
-    return Promise.resolve(mockFile(scene, _file.name, _file.size))
+    if (error) throw error
+    for (const percent of [20, 50, 80, 100]) {
+      await new Promise((resolve) => setTimeout(resolve, 40))
+      _onProgress?.(percent)
+    }
+    return mockFile(scene, _file.name, _file.size)
   },
 
   uploadBatch(
@@ -156,21 +160,22 @@ export const mockFileApi = {
     return Promise.resolve(mockSession(session))
   },
 
-  uploadPart(
+  async uploadPart(
     sessionId: number,
     _partNumber: number,
     _blob: Blob,
     _hash: string,
   ): Promise<UploadSession> {
     const error = scenarioError()
-    if (error) return Promise.reject(error)
+    if (error) throw error
     const session = sessionStore.get(sessionId)
     if (!session) {
-      return Promise.reject(new FileApiError({ message: '上传会话不存在（mock）', httpStatus: 404 }))
+      throw new FileApiError({ message: '上传会话不存在（mock）', httpStatus: 404 })
     }
+    await new Promise((resolve) => setTimeout(resolve, 200))
     session.status = 'UPLOADING'
     session.uploadedCount = Math.min(session.partCount, session.uploadedCount + 1)
-    return Promise.resolve(session)
+    return session
   },
 
   completeUploadSession(sessionId: number, scene: FileScene): Promise<FileObject> {

@@ -18,6 +18,10 @@
 
 ## 2. D 的接入方式
 
+当前文件页采用内嵌式接入：`FilePage.vue` 持有一个 `UploadEngine`，
+`UploadEntry.vue` 只负责选择原文件，上传中的任务作为临时行并入 `FileTable.vue`。
+任务行直接在文件名下方显示进度、暂停/继续和取消按钮，不再单独占用上传任务卡区域。
+
 ```vue
 <UploadTaskCenter
   :files="files"
