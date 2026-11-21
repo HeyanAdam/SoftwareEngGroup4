@@ -71,7 +71,7 @@ const routes: RouteRecordRaw[] = [
         path: 'files',
         name: 'File',
         component: () => import('../../features/file/FilePage.vue'),
-        meta: { permission: ['file:view', 'file:upload'] },
+        meta: { permission: 'file:view' },
       },
       {
         path: 'chat',

@@ -33,7 +33,6 @@
       :loading="loading"
       @download="handleDownload"
       @remove="handleRemove"
-      @retry="handleRetry"
     />
 
     <div class="pager">
@@ -43,7 +42,7 @@
         :total="total"
         :page-sizes="[10, 20, 50]"
         layout="total, sizes, prev, pager, next, jumper"
-        @current-change="loadFiles"
+        @current-change="handlePageChange"
         @size-change="handleSizeChange"
       />
     </div>
@@ -55,15 +54,10 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FileTable from './components/FileTable.vue'
 import UploadEntry from './upload/UploadEntry.vue'
-import {
-  deleteFile,
-  getDownloadUrl,
-  listFiles,
-  type FileObjectVO,
-  type FileScene,
-} from './api/tempFileApi'
+import { deleteFile, getDownloadUrl, listFiles } from './file.api'
+import type { FileObject, FileScene } from './types'
 
-const SCENE_OPTIONS = [
+const SCENE_OPTIONS: Array<{ value: '' | FileScene; label: string }> = [
   { value: '', label: '全部场景' },
   { value: 'STUDY_MATERIAL', label: '学习资料' },
   { value: 'CHAT_ATTACHMENT', label: '聊天附件' },
@@ -73,20 +67,18 @@ const SCENE_OPTIONS = [
 ]
 
 const loading = ref(false)
-const files = ref<FileObjectVO[]>([])
+const files = ref<FileObject[]>([])
 const total = ref(0)
 const page = ref(1)
 const size = ref(10)
-const scene = ref('')
+const scene = ref<'' | FileScene>('')
 const keyword = ref('')
 
 /** 上传时使用的场景：筛选为“全部”时默认落到学习资料 */
-const currentScene = computed<FileScene>(
-  () => (scene.value || 'STUDY_MATERIAL') as FileScene,
-)
+const currentScene = computed<FileScene>(() => scene.value || 'STUDY_MATERIAL')
 
 /** 后端没有 keyword 参数，只能对当前页数据做前端过滤 */
-const visibleFiles = computed<FileObjectVO[]>(() => {
+const visibleFiles = computed<FileObject[]>(() => {
   const key = keyword.value.trim().toLowerCase()
   if (!key) return files.value
   return files.value.filter((file) =>
@@ -117,16 +109,23 @@ function handleSceneChange(): void {
   void loadFiles()
 }
 
+function handlePageChange(nextPage: number): void {
+  page.value = nextPage
+  void loadFiles()
+}
+
 function handleSizeChange(): void {
   page.value = 1
   void loadFiles()
 }
 
-function handleUploadCompleted(file: FileObjectVO): void {
+function handleUploadCompleted(file: FileObject): void {
   const duplicated = files.value.some((item) => item.id === file.id)
   if (duplicated) {
     // 后端同用户同 hash 会秒传复用旧记录，列表不会新增行
     ElMessage.info(`「${file.originalFilename}」已存在，已复用已有文件（秒传）`)
+  } else {
+    ElMessage.success(`「${file.originalFilename}」上传完成`)
   }
   void loadFiles()
 }
@@ -135,9 +134,12 @@ function handleUploadFailed(message: string): void {
   ElMessage.error(message)
 }
 
-async function handleDownload(file: FileObjectVO): Promise<void> {
+async function handleDownload(file: FileObject): Promise<void> {
   try {
-    const { url } = await getDownloadUrl(file.id)
+    const url = await getDownloadUrl(file.id)
+    if (!url) {
+      throw new Error('未获取到下载地址')
+    }
     const link = document.createElement('a')
     link.href = url
     link.download = file.originalFilename
@@ -151,7 +153,7 @@ async function handleDownload(file: FileObjectVO): Promise<void> {
   }
 }
 
-async function handleRemove(file: FileObjectVO): Promise<void> {
+async function handleRemove(file: FileObject): Promise<void> {
   try {
     await ElMessageBox.confirm(
       `确认删除「${file.originalFilename}」？删除后不可恢复。`,
@@ -173,12 +175,6 @@ async function handleRemove(file: FileObjectVO): Promise<void> {
   } catch (error) {
     ElMessage.error(errorMessage(error))
   }
-}
-
-function handleRetry(file: FileObjectVO): void {
-  ElMessage.warning(
-    `「${file.originalFilename}」当前状态为 ${file.status}，请重新选择该文件上传。后端暂不支持失败会话直接重试合并。`,
-  )
 }
 
 onMounted(() => {

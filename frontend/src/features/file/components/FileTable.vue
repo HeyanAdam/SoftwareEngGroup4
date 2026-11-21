@@ -18,7 +18,7 @@
     </el-table-column>
     <el-table-column label="状态" width="100">
       <template #default="{ row }">
-        <el-tag :type="row.status === 'READY' ? 'success' : 'warning'" size="small">
+        <el-tag :type="statusTagType(row.status)" size="small">
           {{ statusLabel(row.status) }}
         </el-tag>
       </template>
@@ -28,7 +28,7 @@
         {{ formatTime(row.createTime) }}
       </template>
     </el-table-column>
-    <el-table-column label="操作" width="200" fixed="right">
+    <el-table-column label="操作" width="140" fixed="right">
       <template #default="{ row }">
         <el-button
           v-permission="'file:download'"
@@ -47,31 +47,22 @@
         >
           删除
         </el-button>
-        <el-button
-          v-if="row.status !== 'READY'"
-          link
-          type="warning"
-          @click="emit('retry', row)"
-        >
-          重试
-        </el-button>
       </template>
     </el-table-column>
   </el-table>
 </template>
 
 <script setup lang="ts">
-import type { FileObjectVO } from '../api/tempFileApi'
+import type { FileObject } from '../types'
 
 defineProps<{
-  files: FileObjectVO[]
+  files: FileObject[]
   loading: boolean
 }>()
 
 const emit = defineEmits<{
-  download: [file: FileObjectVO]
-  remove: [file: FileObjectVO]
-  retry: [file: FileObjectVO]
+  download: [file: FileObject]
+  remove: [file: FileObject]
 }>()
 
 const SCENE_LABELS: Record<string, string> = {
@@ -96,6 +87,12 @@ function sceneLabel(scene: string): string {
 
 function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status
+}
+
+function statusTagType(status: string): 'success' | 'warning' | 'danger' {
+  if (status === 'READY') return 'success'
+  if (status === 'FAILED') return 'danger'
+  return 'warning'
 }
 
 function formatSize(size: number): string {

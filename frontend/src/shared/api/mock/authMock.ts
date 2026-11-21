@@ -55,14 +55,24 @@ function fail(httpStatus: number, code: number, message: string, retryAfter?: nu
   return { httpStatus, body: { code, message, data: null }, retryAfter }
 }
 
-/** Mock 学生账号（权限码只有 chat:send，与当前库内 STUDENT 一致） */
+/** Mock 学生账号（与当前 STUDENT 的问答、文件和学习计划权限矩阵一致） */
 const MOCK_STUDENT: CurrentUser = {
   user_id: 10001,
   username: 'kaoyan_student',
   nickname: '考研小白',
   email_masked: 'stu***@example.com',
   roles: [ROLES.STUDENT],
-  permissions: [PERMISSIONS.CHAT_SEND],
+  permissions: [
+    PERMISSIONS.CHAT_SEND,
+    PERMISSIONS.FILE_VIEW,
+    PERMISSIONS.FILE_UPLOAD,
+    PERMISSIONS.FILE_DOWNLOAD,
+    PERMISSIONS.FILE_DELETE,
+    PERMISSIONS.STUDY_PLAN_VIEW,
+    PERMISSIONS.STUDY_PLAN_CREATE,
+    PERMISSIONS.STUDY_PLAN_UPDATE,
+    PERMISSIONS.STUDY_TASK_UPDATE,
+  ],
   has_profile: false,
 }
 
