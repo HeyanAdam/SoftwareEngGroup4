@@ -7,7 +7,7 @@
         <el-menu-item v-permission="'file:view'" index="/files">文件</el-menu-item>
         <el-menu-item index="/chat">AI 聊天</el-menu-item>
         <!-- 管理后台入口：按权限码显隐，学生无 admin:user:list / admin:role:list 时不渲染 -->
-        <el-menu-item v-if="hasAnyPermission(ADMIN_MENU_PERMISSIONS)" index="/admin">
+        <el-menu-item v-if="hasAnyPermission(ADMIN_MENU_PERMISSIONS)" index="/admin/dashboard">
           管理后台
         </el-menu-item>
       </el-menu>

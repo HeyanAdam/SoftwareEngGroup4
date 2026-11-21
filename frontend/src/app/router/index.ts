@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { UNAUTHORIZED_EVENT } from '../../shared/api/request'
+import { UNAUTHORIZED_EVENT, type UnauthorizedDetail } from '../../shared/api/request'
 import { useAuthStore } from '../stores/auth'
+import { useAdminAuthStore } from '../stores/adminAuth'
+import { decideAccess, hasAdminScope } from './access'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -10,6 +12,8 @@ declare module 'vue-router' {
     permission?: string | string[]
     /** 进入该路由所需角色（任一命中即可） */
     roles?: string[]
+    /** 是否为后台路由域：true 时使用后台 Store / 令牌 / 登录页 */
+    adminScope?: boolean
   }
 }
 
@@ -50,6 +54,55 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../../features/auth/error/TooManyRequestsPage.vue'),
     meta: { requiresAuth: false },
   },
+  // ---- 后台登录页：独立于学生端壳层，不显示学生侧栏 ----
+  {
+    path: '/admin/login',
+    name: 'AdminLogin',
+    component: () => import('../../features/admin/login/AdminLoginPage.vue'),
+    meta: { requiresAuth: false, adminScope: true },
+  },
+  // ---- 后台壳层：/admin 及其子路由 ----
+  {
+    path: '/admin',
+    component: () => import('../../features/admin/layout/AdminLayout.vue'),
+    meta: { requiresAuth: true, adminScope: true },
+    children: [
+      {
+        path: '',
+        redirect: '/admin/dashboard',
+      },
+      {
+        path: 'dashboard',
+        name: 'AdminDashboard',
+        component: () => import('../../features/admin/overview/AdminOverviewPage.vue'),
+        meta: { permission: 'admin:user:list' },
+      },
+      {
+        path: 'users',
+        name: 'AdminUsers',
+        component: () => import('../../features/admin/users/AdminUsersPage.vue'),
+        meta: { permission: 'admin:user:list' },
+      },
+      {
+        path: 'roles',
+        name: 'AdminRoles',
+        component: () => import('../../features/admin/roles/AdminRolesPage.vue'),
+        meta: { permission: 'admin:role:list' },
+      },
+      {
+        path: 'permissions',
+        name: 'AdminPermissions',
+        component: () => import('../../features/admin/permissions/AdminPermissionsPage.vue'),
+        meta: { permission: 'admin:role:list' },
+      },
+      {
+        path: 'logs',
+        name: 'AdminLogs',
+        component: () => import('../../features/admin/login-logs/AdminLogsPage.vue'),
+        meta: { permission: 'admin:user:list' },
+      },
+    ],
+  },
   {
     path: '/',
     redirect: '/dashboard',
@@ -78,12 +131,6 @@ const routes: RouteRecordRaw[] = [
         name: 'Chat',
         component: () => import('../../features/chat/ChatPage.vue'),
       },
-      {
-        path: 'admin',
-        name: 'Admin',
-        component: () => import('../../features/admin/AdminPage.vue'),
-        meta: { permission: 'admin:user:list' },
-      },
     ],
   },
   {
@@ -98,49 +145,110 @@ const router = createRouter({
   routes,
 })
 
-// 全局路由守卫：未登录跳登录，刷新恢复登录态，权限不足跳 403
+/**
+ * 全局路由守卫：按 adminScope 分流到后台 / 学生端 Store。
+ * - 未登录跳对应登录页；刷新时对应 loadCurrentUser 恢复权限快照。
+ * - 后台只校验具体权限码，准入要求任意 admin:* 权限，不硬编码 SYSTEM_ADMIN。
+ */
 router.beforeEach(async (to) => {
-  const authStore = useAuthStore()
+  const isAdminScope = to.meta.adminScope === true
   const requiresAuth = to.meta.requiresAuth !== false
 
   if (!requiresAuth) {
     return true
   }
 
-  if (!authStore.token) {
+  const adminStore = isAdminScope ? useAdminAuthStore() : null
+  const userStore = useAuthStore()
+
+  if (isAdminScope) {
+    if (!adminStore?.token) {
+      // 学生误闯后台 → 403；若学生账号本身带 admin:* 权限，引导去后台登录页换后台令牌
+      if (userStore.token) {
+        if (!userStore.userId) {
+          await userStore.loadCurrentUser().catch(() => undefined)
+        }
+        if (hasAdminScope(userStore.permissions)) {
+          return { name: 'AdminLogin', query: { redirect: to.fullPath } }
+        }
+        return { name: 'Forbidden' }
+      }
+      return { name: 'AdminLogin', query: { redirect: to.fullPath } }
+    }
+
+    try {
+      if (!adminStore.userId) {
+        await adminStore.loadCurrentUser()
+      }
+    } catch {
+      adminStore.clearAuth()
+      return { name: 'AdminLogin', query: { redirect: to.fullPath } }
+    }
+
+    const decision = decideAccess({
+      scope: 'admin',
+      token: adminStore.token,
+      loaded: adminStore.userId !== null,
+      permissions: adminStore.permissions,
+      requiredPermission: to.meta.permission,
+    })
+
+    if (decision.type === 'forbidden') {
+      return { name: 'Forbidden' }
+    }
+    return true
+  }
+
+  if (!userStore.token) {
     return { name: 'Login', query: { redirect: to.fullPath } }
   }
 
   try {
-    if (!authStore.userId) {
-      await authStore.loadCurrentUser()
+    if (!userStore.userId) {
+      await userStore.loadCurrentUser()
     }
   } catch {
-    authStore.clearAuth()
+    userStore.clearAuth()
     return { name: 'Login', query: { redirect: to.fullPath } }
   }
 
-  const needPermission = to.meta.permission
-  if (needPermission) {
-    const codes = Array.isArray(needPermission) ? needPermission : [needPermission]
-    if (!codes.some((code) => authStore.hasPermission(code))) {
-      return { name: 'Forbidden' }
-    }
-  }
+  const decision = decideAccess({
+    scope: 'user',
+    token: userStore.token,
+    loaded: userStore.userId !== null,
+    permissions: userStore.permissions,
+    roles: userStore.roles,
+    requiredPermission: to.meta.permission,
+    requiredRoles: to.meta.roles,
+  })
 
-  const needRoles = to.meta.roles
-  if (needRoles && needRoles.length > 0 && !needRoles.some((role) => authStore.hasRole(role))) {
+  if (decision.type === 'forbidden') {
     return { name: 'Forbidden' }
   }
 
   return true
 })
 
-// 401（Token 失效）统一跳登录页
-window.addEventListener(UNAUTHORIZED_EVENT, () => {
+/** 401（Token 失效）统一跳登录页：后台 401 只回后台登录，学生 401 回学生登录 */
+window.addEventListener(UNAUTHORIZED_EVENT, (event) => {
+  const detail = (event as CustomEvent<UnauthorizedDetail>).detail
+  const scope = detail?.scope === 'admin' ? 'admin' : 'user'
+
+  if (scope === 'admin') {
+    useAdminAuthStore().clearAuth()
+    const current = router.currentRoute.value
+    if (current.name === 'AdminLogin') return
+    void router.replace({
+      name: 'AdminLogin',
+      query: current.fullPath.startsWith('/admin') ? { redirect: current.fullPath } : {},
+    })
+    return
+  }
+
   const current = router.currentRoute.value
   if (current.name === 'Login') return
   void router.replace({ name: 'Login', query: { redirect: current.fullPath } })
 })
 
 export default router
+export { routes }

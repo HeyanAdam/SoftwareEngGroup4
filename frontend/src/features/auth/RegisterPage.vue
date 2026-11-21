@@ -6,7 +6,6 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { registerAccount, sendVerificationCode } from './api/auth.api'
 import {
   EMAIL_PATTERN,
-  USERNAME_PATTERN,
   PASSWORD_PATTERN,
   agreementRule,
   confirmPasswordRule,
@@ -28,15 +27,11 @@ const form = reactive({
   verify_code: '',
   password: '',
   confirm_password: '',
-  nickname: '',
   agree_agreement: false,
 })
 
 const rules: FormRules = {
-  username: [
-    requiredRule('请输入用户名'),
-    patternRule('用户名为 3-32 位字母、数字或下划线', (value) => USERNAME_PATTERN.test(value)),
-  ],
+  username: [requiredRule('请输入用户名')],
   email: [
     requiredRule('请输入邮箱'),
     patternRule('邮箱格式不正确', (value) => EMAIL_PATTERN.test(value)),
@@ -54,18 +49,6 @@ const rules: FormRules = {
   confirm_password: [
     requiredRule('请再次输入密码'),
     confirmPasswordRule(() => form.password),
-  ],
-  nickname: [
-    {
-      trigger: 'blur',
-      validator: (_rule, value, callback) => {
-        if (typeof value === 'string' && value.length > 64) {
-          callback(new Error('昵称不能超过 64 个字符'))
-          return
-        }
-        callback()
-      },
-    },
   ],
   agree_agreement: [agreementRule('请先阅读并同意用户协议')],
 }
@@ -190,7 +173,6 @@ async function submit(): Promise<void> {
         verify_code: form.verify_code,
         password: form.password,
         confirm_password: form.confirm_password,
-        nickname: form.nickname,
         agree_agreement: form.agree_agreement,
       },
       resolveIdempotencyKey(),
@@ -238,7 +220,7 @@ onBeforeUnmount(() => {
         <el-form-item label="用户名" prop="username">
           <el-input
             v-model="form.username"
-            placeholder="3-32 位字母、数字或下划线"
+            placeholder="请输入用户名"
             clearable
             autocomplete="username"
           />
@@ -287,10 +269,6 @@ onBeforeUnmount(() => {
             show-password
             autocomplete="new-password"
           />
-        </el-form-item>
-
-        <el-form-item label="昵称（可选）" prop="nickname">
-          <el-input v-model="form.nickname" placeholder="不超过 64 个字符" maxlength="64" />
         </el-form-item>
 
         <el-form-item prop="agree_agreement">

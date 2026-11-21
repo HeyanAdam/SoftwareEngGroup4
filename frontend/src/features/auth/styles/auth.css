@@ -130,6 +130,16 @@
   color: #7d9c8c;
 }
 
+/* 学生端登录页底部的后台入口，与后台登录页的「返回学生端」对称 */
+.auth-admin-entry {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px dashed #e1efe7;
+  text-align: center;
+  font-size: 13px;
+  color: #7d9c8c;
+}
+
 .auth-link {
   color: #3f9c6d;
   cursor: pointer;

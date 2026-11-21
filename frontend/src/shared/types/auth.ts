@@ -84,7 +84,7 @@ export interface RegisterRequest {
   verify_code: string
   password: string
   confirm_password: string
-  nickname: string
+  nickname?: string
   agree_agreement: boolean
 }
 
