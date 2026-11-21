@@ -10,10 +10,13 @@ import { dispatchMock } from './mock'
 import type { MockResponse } from './mock/authMock'
 import type { ApiResult } from '../types/auth'
 
-/** 本地存储里 token 的 key（与 P1 约定一致） */
+/** 本地存储里学生端 token 的 key（与 P1 约定一致） */
 export const TOKEN_STORAGE_KEY = 'sa_token'
 
-/** 401 时派发的全局事件，路由层监听后跳登录页 */
+/** 后台 token 的 key：与学生端完全隔离，退出后台不能误删学生登录态 */
+export const ADMIN_TOKEN_STORAGE_KEY = 'sa_admin_token'
+
+/** 401 时派发的全局事件，路由层按 scope 分流转发 */
 export const UNAUTHORIZED_EVENT = 'auth:unauthorized'
 
 /** 普通业务接口前缀（auth / chat / user / knowledge 等） */
@@ -22,9 +25,16 @@ export const API_BASE_URL = '/api/v1'
 /**
  * 管理端接口前缀。
  * 与接口设计文档 1.1 节一致，统一前缀 /api/v1（AdminController 已迁至 /api/v1/admin）。
- * 仍单独一个实例，用于后台接口语义分离，避免与他人共用同一个 baseURL 配置。
  */
 export const ADMIN_API_BASE_URL = '/api/v1/admin'
+
+/** 401 事件的 detail 结构：scope 决定清哪个 token、跳哪个登录页 */
+export interface UnauthorizedDetail {
+  scope: 'user' | 'admin'
+  code: number
+  message: string
+  requestId: string
+}
 
 /** 统一错误对象：业务码 + HTTP 状态 + 重试等待 + 请求 ID */
 export class ApiError extends Error {
@@ -80,16 +90,35 @@ function parseRetryAfter(value: unknown): number {
   return 0
 }
 
-/** 创建带统一拦截器的 axios 实例（普通接口与管理接口共用同一套逻辑） */
-function createService(baseURL: string): AxiosInstance {
+/**
+ * Token 失效统一处理：只清当前 scope 的 token，再派发带 scope 的事件。
+ * 抽成独立函数便于单测「后台 401 不影响学生会话」。
+ */
+export function handleTokenInvalid(
+  scope: 'user' | 'admin',
+  detail: Omit<UnauthorizedDetail, 'scope'>,
+): void {
+  const tokenKey = scope === 'admin' ? ADMIN_TOKEN_STORAGE_KEY : TOKEN_STORAGE_KEY
+  localStorage.removeItem(tokenKey)
+  window.dispatchEvent(
+    new CustomEvent<UnauthorizedDetail>(UNAUTHORIZED_EVENT, {
+      detail: { scope, ...detail },
+    }),
+  )
+}
+
+/** 创建带统一拦截器的 axios 实例：tokenKey 决定读哪个 token 存储（导出便于隔离性单测） */
+export function createService(baseURL: string, tokenKey: string = TOKEN_STORAGE_KEY): AxiosInstance {
+  const scope: 'user' | 'admin' = tokenKey === ADMIN_TOKEN_STORAGE_KEY ? 'admin' : 'user'
+
   const instance = axios.create({
     baseURL,
     timeout: 15000,
   })
 
-  // 请求拦截：自动带 Token 与请求 ID
+  // 请求拦截：自动带当前 scope 的 Token 与请求 ID
   instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY)
+    const token = localStorage.getItem(tokenKey)
     if (token) {
       config.headers.set('Authorization', `Bearer ${token}`)
     }
@@ -109,12 +138,17 @@ function createService(baseURL: string): AxiosInstance {
         typeof body.code === 'number' &&
         body.code !== BUSINESS_CODE.SUCCESS
       ) {
+        const requestId = String(readHeader(response.headers, 'x-request-id') ?? '')
+        // 兜底：某些网关会把 401 包成 2xx 响应体，业务码 10001 同样要清当前 scope 的 token
+        if (body.code === BUSINESS_CODE.NOT_LOGIN) {
+          handleTokenInvalid(scope, { code: body.code, message: body.message, requestId })
+        }
         return Promise.reject(
           new ApiError({
             message: body.message || businessMessage(body.code) || '请求失败',
             code: body.code,
             httpStatus: response.status,
-            requestId: String(readHeader(response.headers, 'x-request-id') ?? ''),
+            requestId,
           }),
         )
       }
@@ -151,10 +185,7 @@ function createService(baseURL: string): AxiosInstance {
       const isTokenInvalid = code === BUSINESS_CODE.NOT_LOGIN || (status === 401 && !hasBusinessCode)
 
       if (isTokenInvalid) {
-        localStorage.removeItem(TOKEN_STORAGE_KEY)
-        window.dispatchEvent(
-          new CustomEvent(UNAUTHORIZED_EVENT, { detail: { code, message, requestId } }),
-        )
+        handleTokenInvalid(scope, { code, message, requestId })
       }
 
       return Promise.reject(
@@ -166,11 +197,14 @@ function createService(baseURL: string): AxiosInstance {
   return instance
 }
 
-/** 普通业务接口实例（/api/v1） */
-const service = createService(API_BASE_URL)
+/** 普通业务接口实例（/api/v1，读 sa_token） */
+const service = createService(API_BASE_URL, TOKEN_STORAGE_KEY)
 
-/** 管理端接口实例（/api/v1/admin）：用户、角色、向量库等后台接口统一用它 */
-export const adminRequest = createService(ADMIN_API_BASE_URL)
+/** 管理端接口实例（/api/v1/admin，读 sa_admin_token）：用户、角色、向量库等后台接口统一用它 */
+export const adminRequest = createService(ADMIN_API_BASE_URL, ADMIN_TOKEN_STORAGE_KEY)
+
+/** 后台认证接口实例（/api/v1/auth，读 sa_admin_token）：后台的 /auth/me、/auth/logout 走它 */
+export const adminAuthRequest = createService(API_BASE_URL, ADMIN_TOKEN_STORAGE_KEY)
 
 /** 把 Mock 响应转成和后端一致的返回值 / ApiError */
 function resolveMock<T>(mock: MockResponse): T {
@@ -195,11 +229,15 @@ async function execute<T>(
   url: string,
   payload: unknown,
   send: () => Promise<AxiosResponse<ApiResult<T>>>,
+  tokenKey: string = TOKEN_STORAGE_KEY,
 ): Promise<T> {
-  const mock = dispatchMock(method, url, payload, localStorage.getItem(TOKEN_STORAGE_KEY) ?? '')
-  if (mock) {
-    const result = await mock
-    return resolveMock<T>(result)
+  // Mock 只覆盖学生端认证接口；后台请求一律走真实后端
+  if (tokenKey === TOKEN_STORAGE_KEY) {
+    const mock = dispatchMock(method, url, payload, localStorage.getItem(TOKEN_STORAGE_KEY) ?? '')
+    if (mock) {
+      const result = await mock
+      return resolveMock<T>(result)
+    }
   }
   const response = await send()
   return response.data.data
@@ -258,38 +296,91 @@ export async function upload<T = unknown>(
   return response.data.data
 }
 
-/** 管理端 GET（自动走 /api/v1/admin 前缀） */
+/** 管理端 GET（自动走 /api/v1/admin 前缀，读后台 token） */
 export async function adminGet<T = unknown>(
   url: string,
   config?: AxiosRequestConfig,
 ): Promise<T> {
-  return execute<T>('GET', url, undefined, () => adminRequest.get<ApiResult<T>>(url, config))
+  return execute<T>(
+    'GET',
+    url,
+    undefined,
+    () => adminRequest.get<ApiResult<T>>(url, config),
+    ADMIN_TOKEN_STORAGE_KEY,
+  )
 }
 
-/** 管理端 POST（自动走 /api/v1/admin 前缀） */
+/** 管理端 POST（自动走 /api/v1/admin 前缀，读后台 token） */
 export async function adminPost<T = unknown>(
   url: string,
   data?: unknown,
   config?: AxiosRequestConfig,
 ): Promise<T> {
-  return execute<T>('POST', url, data, () => adminRequest.post<ApiResult<T>>(url, data, config))
+  return execute<T>(
+    'POST',
+    url,
+    data,
+    () => adminRequest.post<ApiResult<T>>(url, data, config),
+    ADMIN_TOKEN_STORAGE_KEY,
+  )
 }
 
-/** 管理端 PUT（自动走 /api/v1/admin 前缀） */
+/** 管理端 PUT（自动走 /api/v1/admin 前缀，读后台 token） */
 export async function adminPut<T = unknown>(
   url: string,
   data?: unknown,
   config?: AxiosRequestConfig,
 ): Promise<T> {
-  return execute<T>('PUT', url, data, () => adminRequest.put<ApiResult<T>>(url, data, config))
+  return execute<T>(
+    'PUT',
+    url,
+    data,
+    () => adminRequest.put<ApiResult<T>>(url, data, config),
+    ADMIN_TOKEN_STORAGE_KEY,
+  )
 }
 
-/** 管理端 DELETE（自动走 /api/v1/admin 前缀） */
+/** 管理端 DELETE（自动走 /api/v1/admin 前缀，读后台 token） */
 export async function adminDel<T = unknown>(
   url: string,
   config?: AxiosRequestConfig,
 ): Promise<T> {
-  return execute<T>('DELETE', url, undefined, () => adminRequest.delete<ApiResult<T>>(url, config))
+  return execute<T>(
+    'DELETE',
+    url,
+    undefined,
+    () => adminRequest.delete<ApiResult<T>>(url, config),
+    ADMIN_TOKEN_STORAGE_KEY,
+  )
+}
+
+/** 后台认证 GET（/api/v1/auth 前缀，读后台 token） */
+export async function adminAuthGet<T = unknown>(
+  url: string,
+  config?: AxiosRequestConfig,
+): Promise<T> {
+  return execute<T>(
+    'GET',
+    url,
+    undefined,
+    () => adminAuthRequest.get<ApiResult<T>>(url, config),
+    ADMIN_TOKEN_STORAGE_KEY,
+  )
+}
+
+/** 后台认证 POST（/api/v1/auth 前缀，读后台 token） */
+export async function adminAuthPost<T = unknown>(
+  url: string,
+  data?: unknown,
+  config?: AxiosRequestConfig,
+): Promise<T> {
+  return execute<T>(
+    'POST',
+    url,
+    data,
+    () => adminAuthRequest.post<ApiResult<T>>(url, data, config),
+    ADMIN_TOKEN_STORAGE_KEY,
+  )
 }
 
 /** 兼容既有代码的具名导出（早期 FOUND-04 写法使用） */
