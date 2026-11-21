@@ -378,6 +378,10 @@ onBeforeUnmount(() => {
         还没有账号？
         <span class="auth-link" @click="router.push({ name: 'Register' })">立即注册</span>
       </p>
+
+      <p class="auth-admin-entry">
+        <span class="auth-link" @click="router.push({ name: 'AdminLogin' })">管理员登录 →</span>
+      </p>
     </div>
   </div>
 </template>
