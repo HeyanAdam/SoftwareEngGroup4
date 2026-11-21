@@ -80,6 +80,8 @@ interface TaskContext {
   partSize: number
   /** 整文件 SHA-256，落本地续传记录用 */
   fileHash?: string
+  /** 小文件直传请求的取消句柄 */
+  abortController?: AbortController
 }
 
 // ============ 纯函数工具 ============
@@ -390,19 +392,18 @@ export class UploadEngine {
     ctx.paused = false
     const t = ctx.task
     const sessionId = t.sessionId
+    ctx.abortController?.abort()
+    ctx.abortController = undefined
 
-    if (sessionId) {
-      try {
-        await this.api.cancelUploadSession(sessionId)
-      } catch {
-        // 会话可能已合并 / 过期被清理，取消失败不影响本地状态
-      }
-      removeResumeRecord(sessionId)
-    }
+    // 先停止界面进度，再等待服务端清理，避免取消请求期间进度继续更新。
     t.status = 'CANCELLED'
     t.error = undefined
     t.updatedAt = Date.now()
     this.notify(t)
+
+    if (sessionId) {
+      await this.cancelServerSession(sessionId)
+    }
   }
 
   /** 失败任务重试：有会话则续传，无会话则重跑 */
@@ -431,7 +432,7 @@ export class UploadEngine {
   removeTask(taskId: string): void {
     const ctx = this.contexts.get(taskId)
     if (!ctx) return
-    if (ctx.running) return
+    if (ctx.running && ctx.task.status !== 'CANCELLED') return
     this.contexts.delete(taskId)
     this.taskRef.value = this.taskRef.value.filter((task) => task.id !== taskId)
   }
@@ -479,10 +480,12 @@ export class UploadEngine {
       id: newId(),
       fileName: file.name,
       fileSize: file.size,
+      contentType: file.type || 'application/octet-stream',
       scene,
       status: record ? 'PAUSED' : 'WAITING',
       progress: 0,
       partCount,
+      partSize: record?.partSize ?? (isSmallFile(file) ? file.size : DEFAULT_PART_SIZE),
       uploadedParts: record ? [...record.uploadedParts] : [],
       concurrency: this.maxConcurrency,
       sessionId: record?.sessionId,
@@ -534,15 +537,30 @@ export class UploadEngine {
     const hash = await this.hashTaskFile(ctx)
     ctx.fileHash = hash
     t.fingerprint = createFingerprint(ctx.file, hash)
+    if (this.stopBeforeUpload(ctx)) return
+
     t.status = 'UPLOADING'
     t.progress = 0
     this.notify(t)
 
-    const file = await this.api.uploadSmall(ctx.file, t.scene, (percent) => {
-      if (ctx.task.status !== 'UPLOADING') return
-      t.progress = percent
-      this.notify(t)
-    })
+    const controller = new AbortController()
+    ctx.abortController = controller
+    let file: FileObject
+    try {
+      file = await this.api.uploadSmall(
+        ctx.file,
+        t.scene,
+        (percent) => {
+          if (ctx.task.status !== 'UPLOADING') return
+          t.progress = percent
+          this.notify(t)
+        },
+        controller.signal,
+      )
+    } finally {
+      if (ctx.abortController === controller) ctx.abortController = undefined
+    }
+    if (ctx.cancelled) return
 
     t.status = 'COMPLETED'
     t.progress = 100
@@ -620,6 +638,7 @@ export class UploadEngine {
     const hash = await this.hashTaskFile(ctx)
     ctx.fileHash = hash
     t.fingerprint = createFingerprint(ctx.file, hash)
+    if (this.stopBeforeUpload(ctx)) return
 
     let session: UploadSession | null = null
 
@@ -658,11 +677,25 @@ export class UploadEngine {
       )
     }
 
+    if (ctx.cancelled) {
+      await this.cancelServerSession(session.id)
+      t.status = 'CANCELLED'
+      this.notify(t)
+      return
+    }
+
     t.sessionId = session.id
     ctx.partSize = session.partSize || DEFAULT_PART_SIZE
+    t.partSize = ctx.partSize
     t.partCount = session.partCount
     this.applySessionProgress(ctx, session)
     this.persist(ctx)
+
+    if (ctx.paused) {
+      t.status = 'PAUSED'
+      this.notify(t)
+      return
+    }
 
     const missing = this.missingPartsOf(ctx, session)
 
@@ -790,14 +823,42 @@ export class UploadEngine {
     t.progress = 0
     this.notify(t)
     return this.hasher.hashFile(ctx.file, (loaded, total) => {
+      if (t.status !== 'HASHING') return
       if (total <= 0) return
       t.progress = Math.min(100, Math.round((loaded / total) * 100))
       this.notify(t)
     })
   }
 
+  /** 哈希结束后先检查暂停/取消，避免取消后仍创建会话或发起直传。 */
+  private stopBeforeUpload(ctx: TaskContext): boolean {
+    const t = ctx.task
+    if (ctx.cancelled) {
+      t.status = 'CANCELLED'
+      t.error = undefined
+      this.notify(t)
+      return true
+    }
+    if (ctx.paused) {
+      t.status = 'PAUSED'
+      this.notify(t)
+      return true
+    }
+    return false
+  }
+
+  private async cancelServerSession(sessionId: number): Promise<void> {
+    try {
+      await this.api.cancelUploadSession(sessionId)
+    } catch {
+      // 会话可能已合并 / 过期被清理，取消失败不影响本地状态
+    }
+    removeResumeRecord(sessionId)
+  }
+
   private updateProgress(ctx: TaskContext): void {
     const t = ctx.task
+    if (t.status === 'CANCELLED') return
     let doneBytes = 0
     for (const part of ctx.doneParts) {
       const start = (part - 1) * ctx.partSize

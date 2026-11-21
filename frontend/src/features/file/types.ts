@@ -127,12 +127,15 @@ export interface UploadTask {
   id: string
   fileName: string
   fileSize: number
+  contentType: string
   scene: FileScene
   status: UploadStatus
   /** 当前阶段百分比 0-100（HASHING 阶段为哈希进度，UPLOADING 阶段为分片进度） */
   progress: number
   /** 分片总数，小文件为 1 */
   partCount: number
+  /** 实际分片大小，小文件为整个文件大小 */
+  partSize: number
   /** 已完成分片序号（用于展示「已传 3/60」） */
   uploadedParts: number[]
   /** 单任务并发上限 */
@@ -185,6 +188,7 @@ export interface FileApiPort {
     file: File,
     scene: FileScene,
     onProgress?: (percent: number) => void,
+    signal?: AbortSignal,
   ): Promise<FileObject>
   uploadBatch(
     files: File[],
