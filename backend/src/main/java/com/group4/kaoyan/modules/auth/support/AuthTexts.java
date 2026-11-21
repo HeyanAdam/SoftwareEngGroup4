@@ -9,7 +9,6 @@ import java.util.regex.Pattern;
  */
 public final class AuthTexts {
 
-    private static final Pattern USERNAME_PATTERN = Pattern.compile("^[A-Za-z0-9_]{3,32}$");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 
     public static final int USERNAME_MAX_LENGTH = 32;
@@ -26,10 +25,14 @@ public final class AuthTexts {
         return value.trim();
     }
 
+    /**
+     * 用户名只做「非空 + 长度上限」校验，不再限制字符集：
+     * 中文、字母、数字、下划线等都可以作为登录名。
+     */
     public static String normalizeUsername(String username) {
         String value = requireText(username, "用户名不能为空");
-        if (!USERNAME_PATTERN.matcher(value).matches()) {
-            throw AuthException.paramInvalid("用户名需为 3-32 位字母、数字或下划线");
+        if (value.length() > USERNAME_MAX_LENGTH) {
+            throw AuthException.paramInvalid("用户名最多 32 个字符");
         }
         return value;
     }

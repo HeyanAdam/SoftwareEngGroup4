@@ -27,11 +27,13 @@ class AuthTextsTest {
     }
 
     @Test
-    @DisplayName("用户名只允许字母数字下划线，3-32 位")
+    @DisplayName("用户名只校验非空与长度上限，允许中文")
     void shouldValidateUsername() {
         assertEquals("kaoyan_student", AuthTexts.normalizeUsername(" kaoyan_student "));
-        assertThrows(AuthException.class, () -> AuthTexts.normalizeUsername("考研小白"));
-        assertThrows(AuthException.class, () -> AuthTexts.normalizeUsername("ab"));
+        assertEquals("考研小白", AuthTexts.normalizeUsername("考研小白"));
+        assertEquals("孙晔", AuthTexts.normalizeUsername("孙晔"));
+        assertThrows(AuthException.class, () -> AuthTexts.normalizeUsername("  "));
+        assertThrows(AuthException.class, () -> AuthTexts.normalizeUsername("a".repeat(33)));
     }
 
     @Test
