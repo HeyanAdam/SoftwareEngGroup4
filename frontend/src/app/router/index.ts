@@ -98,7 +98,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'logs',
         name: 'AdminLogs',
-        component: () => import('../../features/admin/logs/AdminLogsPage.vue'),
+        component: () => import('../../features/admin/login-logs/AdminLogsPage.vue'),
         meta: { permission: 'admin:user:list' },
       },
     ],
