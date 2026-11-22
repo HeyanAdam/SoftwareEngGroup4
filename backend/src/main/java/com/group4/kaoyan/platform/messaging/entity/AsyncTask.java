@@ -19,7 +19,9 @@ public class AsyncTask implements TimedEntity {
     public static final String STATUS_CANCELLED = "CANCELLED";
 
     public static final String TYPE_DOC_PARSE = "DOC_PARSE";
+    public static final String TYPE_AI_CHAT = "AI_CHAT";
     public static final String BIZ_DOCUMENT = "DOCUMENT";
+    public static final String BIZ_CHAT_MESSAGE = "CHAT_MESSAGE";
 
     private Long id;
     private String taskNo;

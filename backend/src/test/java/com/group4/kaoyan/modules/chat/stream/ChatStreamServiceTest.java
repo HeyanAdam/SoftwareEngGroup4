@@ -76,7 +76,7 @@ class ChatStreamServiceTest {
 
         when(chatService.findOwned(7L, 10L)).thenReturn(conversation);
         when(chatService.recentHistory(10L)).thenReturn("学生：上一题\n助教：选 B\n");
-        when(chatService.saveUserMessage(any(), eq(7L), anyString())).thenReturn(userMessage);
+        when(chatService.saveUserMessage(any(), eq(7L), anyString(), any(), anyString())).thenReturn(userMessage);
         when(chatService.saveAssistantMessage(any(), eq(7L), anyString(), anyString(), anyString()))
                 .thenReturn(assistantMessage);
         when(promptLoader.render(anyString(), anyString(), anyString())).thenReturn("系统提示");

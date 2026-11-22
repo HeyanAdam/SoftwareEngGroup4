@@ -3,6 +3,7 @@ package com.group4.kaoyan.platform.messaging.service;
 import com.group4.kaoyan.common.mybatis.EntityTimestamps;
 import com.group4.kaoyan.common.mybatis.PageQuery;
 import com.group4.kaoyan.common.R;
+import com.group4.kaoyan.dto.ChatAnswerTaskDTO;
 import com.group4.kaoyan.dto.DocParseTaskDTO;
 import com.group4.kaoyan.platform.messaging.RabbitTopologyConfig;
 import com.group4.kaoyan.platform.messaging.entity.AsyncTask;
@@ -19,6 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -36,6 +38,7 @@ public class AsyncTaskService {
     private static final DateTimeFormatter TASK_NO_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final int MAX_RETRY = 5;
     private static final String MESSAGE_TYPE_DOC_PARSE = "DOC_PARSE_TASK";
+    private static final String MESSAGE_TYPE_AI_CHAT = "AI_CHAT_TASK";
 
     private final AsyncTaskMapper taskMapper;
     private final OutboxMapper outboxMapper;
@@ -85,6 +88,73 @@ public class AsyncTaskService {
 
     public AsyncTask getById(Long id) {
         return taskMapper.selectById(id);
+    }
+
+    /**
+     * AI 回答任务：用户消息、任务、Outbox 由调用方在同一本地事务里写。
+     * 消费者拿到的消息体包含完整上下文，不再回查 HTTP 登录态。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public AsyncTask createAiChatTask(ChatAnswerTaskDTO message) {
+        AsyncTask task = new AsyncTask();
+        task.setTaskNo(buildTaskNo(AsyncTask.TYPE_AI_CHAT));
+        task.setTaskType(AsyncTask.TYPE_AI_CHAT);
+        task.setBizType(AsyncTask.BIZ_CHAT_MESSAGE);
+        task.setBizId(message.getUserMessageId());
+        task.setUserId(message.getUserId());
+        task.setStatus(AsyncTask.STATUS_PENDING);
+        task.setProgress(0);
+        task.setRetryCount(0);
+        task.setPayloadJson(message);
+        EntityTimestamps.fillOnInsert(task);
+        taskMapper.insert(task);
+
+        MessageOutbox outbox = new MessageOutbox();
+        outbox.setEventId(UUID.randomUUID().toString().replace("-", ""));
+        outbox.setExchangeName(RabbitTopologyConfig.EXCHANGE);
+        outbox.setRoutingKey(RabbitTopologyConfig.CHAT_ANSWER_ROUTING_KEY);
+        outbox.setMessageType(MESSAGE_TYPE_AI_CHAT);
+        outbox.setBizKey("CHAT:" + message.getUserMessageId());
+        outbox.setPayloadJson(message);
+        outbox.setStatus(MessageOutbox.STATUS_PENDING);
+        outbox.setRetryCount(0);
+        EntityTimestamps.fillOnInsert(outbox);
+        outboxMapper.insert(outbox);
+        log.info("AI 回答任务已创建 taskNo={} streamId={} userMessageId={}",
+                task.getTaskNo(), message.getStreamId(), message.getUserMessageId());
+        return task;
+    }
+
+    public AsyncTask findChatTask(Long userMessageId) {
+        if (userMessageId == null) {
+            return null;
+        }
+        return taskMapper.selectLatestByBiz(AsyncTask.BIZ_CHAT_MESSAGE, userMessageId);
+    }
+
+    /** 消费者进入执行：只有 PENDING/RETRY_WAIT 能被置 RUNNING，重复投递直接跳过。 */
+    public Long markRunningByChat(Long userMessageId) {
+        AsyncTask task = findChatTask(userMessageId);
+        if (task == null) {
+            return null;
+        }
+        if (taskMapper.markRunning(task.getId(), 0) == 0) {
+            log.debug("AI 回答任务状态不可执行 userMessageId={} status={}", userMessageId, task.getStatus());
+            return null;
+        }
+        return task.getId();
+    }
+
+    public boolean retryOrFailByChat(Long userMessageId, String error) {
+        AsyncTask task = findChatTask(userMessageId);
+        return task != null && retryOrFail(task.getId(), error);
+    }
+
+    public void failByChat(Long userMessageId, String error) {
+        AsyncTask task = findChatTask(userMessageId);
+        if (task != null) {
+            fail(task.getId(), error);
+        }
     }
 
     public R.PageData<AsyncTask> page(String taskType, String status, long pageNum, long pageSize) {
