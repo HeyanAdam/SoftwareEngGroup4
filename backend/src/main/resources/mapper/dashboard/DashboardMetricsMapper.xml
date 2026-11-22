@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.admin.dashboard.mapper.DashboardMetricsMapper">
+
+    <!-- 用户：sys_user 没有逻辑删除字段，不要加 deleted 条件 -->
+    <select id="countUsers" resultType="long">
+        SELECT COUNT(*) FROM sys_user
+    </select>
+
+    <select id="countEnabledUsers" resultType="long">
+        SELECT COUNT(*) FROM sys_user WHERE status = 1
+    </select>
+
+    <!-- 登录：左闭右开区间，避免 DATE(create_time) = CURRENT_DATE() 导致索引失效 -->
+    <select id="countLogins" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_login_log
+        WHERE create_time &gt;= #{start}
+          AND create_time &lt; #{end}
+          AND success = #{success}
+    </select>
+
+    <!-- 文件：只统计未删除对象 -->
+    <select id="countFiles" resultType="long">
+        SELECT COUNT(*) FROM file_object WHERE deleted = 0
+    </select>
+
+    <select id="sumFileSize" resultType="long">
+        SELECT COALESCE(SUM(file_size), 0) FROM file_object WHERE deleted = 0
+    </select>
+
+    <!-- 文档：kb_document 没有逻辑删除字段 -->
+    <select id="countDocuments" resultType="long">
+        SELECT COUNT(*) FROM kb_document
+    </select>
+
+    <select id="countFailedDocuments" resultType="long">
+        SELECT COUNT(*) FROM kb_document WHERE status = 'FAILED'
+    </select>
+
+    <!-- 会话与消息 -->
+    <select id="countConversations" resultType="long">
+        SELECT COUNT(*) FROM chat_conversation WHERE deleted = 0
+    </select>
+
+    <select id="countMessages" resultType="long">
+        SELECT COUNT(*) FROM chat_message
+    </select>
+
+    <select id="countMessagesBetween" resultType="long">
+        SELECT COUNT(*)
+        FROM chat_message
+        WHERE create_time &gt;= #{start}
+          AND create_time &lt; #{end}
+    </select>
+
+    <!-- 趋势：只返回有数据的日期，缺失日期由 Java 端补 0 -->
+    <select id="dailyLogins" resultType="com.group4.kaoyan.modules.admin.dashboard.dto.DailyCountDTO">
+        SELECT DATE_FORMAT(create_time, '%m-%d') AS stat_date,
+               COUNT(*)                          AS total
+        FROM sys_login_log
+        WHERE create_time &gt;= #{start}
+          AND create_time &lt; #{end}
+          AND success = 1
+        GROUP BY stat_date
+        ORDER BY stat_date
+    </select>
+
+    <select id="dailyUploads" resultType="com.group4.kaoyan.modules.admin.dashboard.dto.DailyCountDTO">
+        SELECT DATE_FORMAT(create_time, '%m-%d') AS stat_date,
+               COUNT(*)                          AS total
+        FROM file_object
+        WHERE deleted = 0
+          AND create_time &gt;= #{start}
+          AND create_time &lt; #{end}
+        GROUP BY stat_date
+        ORDER BY stat_date
+    </select>
+
+    <select id="dailyChatMessages" resultType="com.group4.kaoyan.modules.admin.dashboard.dto.DailyCountDTO">
+        SELECT DATE_FORMAT(create_time, '%m-%d') AS stat_date,
+               COUNT(*)                          AS total
+        FROM chat_message
+        WHERE create_time &gt;= #{start}
+          AND create_time &lt; #{end}
+        GROUP BY stat_date
+        ORDER BY stat_date
+    </select>
+</mapper>
