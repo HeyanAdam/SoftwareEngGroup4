@@ -1,0 +1,91 @@
+[
+  {
+    "version": 1,
+    "type": "meta",
+    "requestId": "req-send-001",
+    "streamId": "stream-6b21a7e0-0001",
+    "sequence": 1,
+    "serverTime": "2026-11-22T16:30:00+08:00",
+    "data": {
+      "conversationId": 12,
+      "userMessageId": 8801,
+      "model": "gpt-4o-mini"
+    }
+  },
+  {
+    "version": 1,
+    "type": "references",
+    "requestId": "req-send-001",
+    "streamId": "stream-6b21a7e0-0001",
+    "sequence": 2,
+    "serverTime": "2026-11-22T16:30:01+08:00",
+    "data": {
+      "items": [
+        {
+          "index": 1,
+          "fileName": "数据***.pdf",
+          "summary": "链式存储通过修改指针完成插入删除，不需要整体移动元素。",
+          "score": 0.87
+        },
+        {
+          "index": 2,
+          "fileName": "考研***.md",
+          "summary": "顺序表插入平均移动 n/2 个元素，链表插入只需改动相邻指针。",
+          "score": 0.79
+        }
+      ]
+    }
+  },
+  {
+    "version": 1,
+    "type": "delta",
+    "requestId": "req-send-001",
+    "streamId": "stream-6b21a7e0-0001",
+    "sequence": 3,
+    "serverTime": "2026-11-22T16:30:01+08:00",
+    "data": {
+      "content": "因为链式存储"
+    }
+  },
+  {
+    "version": 1,
+    "type": "delta",
+    "requestId": "req-send-001",
+    "streamId": "stream-6b21a7e0-0001",
+    "sequence": 4,
+    "serverTime": "2026-11-22T16:30:02+08:00",
+    "data": {
+      "content": "插入只需改动相邻指针。"
+    }
+  },
+  {
+    "version": 1,
+    "type": "done",
+    "requestId": "req-send-001",
+    "streamId": "stream-6b21a7e0-0001",
+    "sequence": 5,
+    "serverTime": "2026-11-22T16:30:03+08:00",
+    "data": {
+      "messageId": 8802,
+      "model": "gpt-4o-mini",
+      "promptTokens": 812,
+      "completionTokens": 96,
+      "finishReason": "stop"
+    }
+  },
+  {
+    "version": 1,
+    "type": "error",
+    "requestId": "req-send-001",
+    "streamId": "stream-6b21a7e0-0001",
+    "sequence": 3,
+    "serverTime": "2026-11-22T16:30:02+08:00",
+    "data": {
+      "code": "INTERNAL_ERROR",
+      "message": "知识库检索失败",
+      "retryable": true,
+      "messageId": null,
+      "partialChars": 8
+    }
+  }
+]
