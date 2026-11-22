@@ -26,6 +26,16 @@ public class RabbitTopologyConfig {
     public static final String DOC_PARSE_QUEUE = "kaoyan.doc.parse.queue";
     public static final String DOC_PARSE_ROUTING_KEY = "doc.parse.task";
 
+    // 聊天回答队列（A-2）：带死信；失败先进延迟重试队列，30 秒后回到业务交换机
+    public static final String CHAT_ANSWER_QUEUE = "kaoyan.chat.answer.queue";
+    public static final String CHAT_ANSWER_ROUTING_KEY = "chat.answer.task";
+    public static final String CHAT_RETRY_QUEUE = "kaoyan.chat.answer.retry.queue";
+    public static final String CHAT_RETRY_ROUTING_KEY = "chat.answer.retry";
+    public static final String CHAT_DLQ = "kaoyan.chat.answer.dlq";
+    public static final String CHAT_DLQ_ROUTING_KEY = "chat.answer.dead";
+    /** 重试队列消息 TTL：30 秒 */
+    public static final int CHAT_RETRY_TTL_MILLIS = 30_000;
+
     // 死信
     public static final String DLX_EXCHANGE = "kaoyan.dlx";
     public static final String DLQ_QUEUE = "kaoyan.doc.parse.dlq";
@@ -83,5 +93,46 @@ public class RabbitTopologyConfig {
                 .bind(docParseDeadLetterQueue)
                 .to(kaoyanDlxExchange)
                 .with(DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue chatAnswerQueue() {
+        return QueueBuilder.durable(CHAT_ANSWER_QUEUE)
+                .withArgument("x-dead-letter-exchange", DLX_EXCHANGE)
+                .withArgument("x-dead-letter-routing-key", CHAT_DLQ_ROUTING_KEY)
+                .build();
+    }
+
+    @Bean
+    public Queue chatAnswerDeadLetterQueue() {
+        return new Queue(CHAT_DLQ);
+    }
+
+    /**
+     * 延迟重试队列：消息在这里滞留 30 秒，到期由 x-dead-letter-* 重新投回
+     * {@code kaoyan.direct / chat.answer.task}，形成"失败 → 等待 → 重试"闭环。
+     */
+    @Bean
+    public Queue chatAnswerRetryQueue() {
+        return QueueBuilder.durable(CHAT_RETRY_QUEUE)
+                .withArgument("x-message-ttl", CHAT_RETRY_TTL_MILLIS)
+                .withArgument("x-dead-letter-exchange", EXCHANGE)
+                .withArgument("x-dead-letter-routing-key", CHAT_ANSWER_ROUTING_KEY)
+                .build();
+    }
+
+    @Bean
+    public Binding chatAnswerBinding(Queue chatAnswerQueue, DirectExchange kaoyanExchange) {
+        return BindingBuilder.bind(chatAnswerQueue).to(kaoyanExchange).with(CHAT_ANSWER_ROUTING_KEY);
+    }
+
+    @Bean
+    public Binding chatAnswerRetryBinding(Queue chatAnswerRetryQueue, DirectExchange kaoyanDlxExchange) {
+        return BindingBuilder.bind(chatAnswerRetryQueue).to(kaoyanDlxExchange).with(CHAT_RETRY_ROUTING_KEY);
+    }
+
+    @Bean
+    public Binding chatAnswerDeadLetterBinding(Queue chatAnswerDeadLetterQueue, DirectExchange kaoyanDlxExchange) {
+        return BindingBuilder.bind(chatAnswerDeadLetterQueue).to(kaoyanDlxExchange).with(CHAT_DLQ_ROUTING_KEY);
     }
 }
