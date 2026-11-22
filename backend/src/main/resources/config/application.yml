@@ -174,6 +174,20 @@ kaoyan:
     login-failure-window: ${AUTH_LOGIN_FAILURE_WINDOW:30m}
     mail-from: ${MAIL_FROM:no-reply@kaoyan.local}
     mail-subject-prefix: "[考研AI导学系统]"
+  realtime:
+    ws-path: ${REALTIME_WS_PATH:/ws/chat}
+    ticket-ttl: ${REALTIME_TICKET_TTL:60s}
+    heartbeat-interval: ${REALTIME_HEARTBEAT_INTERVAL:30s}
+    idle-timeout: ${REALTIME_IDLE_TIMEOUT:90s}
+    max-message-bytes: ${REALTIME_MAX_MESSAGE_BYTES:32768}
+    max-text-length: ${REALTIME_MAX_TEXT_LENGTH:4000}
+    max-connections-per-user: ${REALTIME_MAX_CONNECTIONS_PER_USER:6}
+    max-sends-per-window: ${REALTIME_MAX_SENDS_PER_WINDOW:6}
+    send-rate-window: ${REALTIME_SEND_RATE_WINDOW:10s}
+    max-concurrent-generations-per-user: ${REALTIME_MAX_CONCURRENT_PER_USER:2}
+    max-concurrent-generations-per-connection: ${REALTIME_MAX_CONCURRENT_PER_CONNECTION:1}
+    max-field-length: ${REALTIME_MAX_FIELD_LENGTH:64}
+    allowed-origins: ${REALTIME_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   mq:
     # false：文档解析回退为本地 @Async，不走 Outbox/MQ（离线开发兜底）
     doc-parse-enabled: ${MQ_DOC_PARSE_ENABLED:true}

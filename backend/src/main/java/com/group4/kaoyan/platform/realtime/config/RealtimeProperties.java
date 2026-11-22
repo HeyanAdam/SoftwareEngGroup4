@@ -42,6 +42,18 @@ public class RealtimeProperties {
     /** 同一用户允许同时在线的连接数（多标签页 + 多设备）。 */
     private int maxConnectionsPerUser = 6;
 
+    /** 固定窗口内允许发送的聊天请求数。 */
+    private int maxSendsPerWindow = 6;
+
+    /** 聊天发送频率的固定窗口。 */
+    private Duration sendRateWindow = Duration.ofSeconds(10);
+
+    /** 同一用户同时进行的 AI 生成数。 */
+    private int maxConcurrentGenerationsPerUser = 2;
+
+    /** 同一 WebSocket 连接同时进行的 AI 生成数。 */
+    private int maxConcurrentGenerationsPerConnection = 1;
+
     /** 单条字段（requestId / clientMessageId / type）的最大长度。 */
     private int maxFieldLength = 64;
 

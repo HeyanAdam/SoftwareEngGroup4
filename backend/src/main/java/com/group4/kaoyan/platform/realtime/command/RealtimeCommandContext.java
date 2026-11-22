@@ -2,7 +2,11 @@ package com.group4.kaoyan.platform.realtime.command;
 
 import com.group4.kaoyan.platform.realtime.delivery.RealtimeDeliveryPort;
 import com.group4.kaoyan.platform.realtime.delivery.RealtimeOutboundMessage;
+import com.group4.kaoyan.platform.realtime.protocol.RealtimeErrorCode;
+import com.group4.kaoyan.platform.realtime.protocol.RealtimeProtocol;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -25,5 +29,14 @@ public record RealtimeCommandContext(
     /** 只回当前连接。 */
     public void reply(String type, String requestId, Object data) {
         connectionSender.accept(RealtimeOutboundMessage.of(type, requestId, data));
+    }
+
+    /** 只回当前连接的标准连接层错误。 */
+    public void replyError(RealtimeErrorCode code, String requestId, String detail) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("code", code.getCode());
+        data.put("reason", detail == null || detail.isBlank() ? code.getReason() : detail);
+        data.put("retryable", code.isRetryable());
+        reply(RealtimeProtocol.TYPE_ERROR, requestId, data);
     }
 }
