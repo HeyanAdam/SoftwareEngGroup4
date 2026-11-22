@@ -11,7 +11,7 @@ import java.util.Map;
  * 服务端回包的统一序列化入口：所有出站消息都在这里拼 {@code version/type/requestId/data}。
  *
  * <p>为什么不用现成的 record 直接序列化：字段顺序对前端调试、抓包比对都更友好，
- * 而且错误包的 {@code code + reason} 结构只有一个地方能改。</p>
+ * 而且错误包的 {@code code + reason + retryable} 结构只有一个地方能改。</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -40,7 +40,7 @@ public class RealtimeMessageWriter {
         return toJson(RealtimeProtocol.TYPE_PONG, requestId, Map.of());
     }
 
-    /** 错误包：{@code data = {code, reason}}。 */
+    /** 错误包：{@code data = {code, reason, retryable}}。 */
     public String error(RealtimeErrorCode code, String requestId) {
         return error(code, requestId, code.getReason());
     }
@@ -50,6 +50,7 @@ public class RealtimeMessageWriter {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("code", code.getCode());
         data.put("reason", detail == null || detail.isBlank() ? code.getReason() : detail);
+        data.put("retryable", code.isRetryable());
         return toJson(RealtimeProtocol.TYPE_ERROR, requestId, data);
     }
 }

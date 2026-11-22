@@ -30,7 +30,7 @@ public final class RealtimeProtocol {
     /** 心跳应答。 */
     public static final String TYPE_PONG = "pong";
 
-    /** 协议/业务错误统一用这个类型，{@code data} 里是 {@code code + reason}。 */
+    /** 协议/业务错误统一用这个类型，{@code data} 里是 {@code code + reason + retryable}。 */
     public static final String TYPE_ERROR = "error";
 
     /** 聊天事件类型：业务层直接复用 A 定义的 {@code ChatStreamEvent} 外层结构。 */

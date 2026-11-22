@@ -68,7 +68,7 @@ Authorization: Bearer <登录 Token>
 ```
 
 ```json
-{ "version": 1, "type": "error", "requestId": "request-uuid", "data": { "code": 4404, "reason": "暂不支持的消息类型：chat.send" } }
+{ "version": 1, "type": "error", "requestId": "request-uuid", "data": { "code": 4404, "reason": "暂不支持的消息类型：chat.send", "retryable": false } }
 ```
 
 > B-1 阶段没有任何 `RealtimeCommandHandler` 实现，所以 `chat.send` 会收到 4404，这是预期行为；
@@ -76,17 +76,27 @@ Authorization: Bearer <登录 Token>
 
 ### 错误码
 
-| code | 含义 |
-| --- | --- |
-| 4400 | 消息格式不合法（JSON、字段、类型） |
-| 4401 | 票据无效 / 过期 / 已用掉 |
-| 4403 | 无通道权限、账号被禁用、Origin 不合法 |
-| 4404 | 暂不支持的消息类型 |
-| 4408 | 空闲超时（服务端主动关闭） |
-| 4413 | 消息体超过 32 KB |
-| 4426 | 协议版本不支持 |
-| 4429 | 连接数超限 / 请求过于频繁 |
-| 4500 | 服务端内部错误 |
+| code | 含义 | retryable |
+| --- | --- | --- |
+| 4400 | 消息格式不合法（JSON、字段、类型） | `false` |
+| 4401 | 票据无效 / 过期 / 已用掉 | `false` |
+| 4403 | 无通道权限、账号被禁用、Origin 不合法 | `false` |
+| 4404 | 暂不支持的消息类型 | `false` |
+| 4408 | 空闲超时（服务端主动关闭） | `true` |
+| 4413 | 消息体超过 32 KB | `false` |
+| 4426 | 协议版本不支持 | `false` |
+| 4429 | 连接数超限 / 请求过于频繁 | `true` |
+| 4500 | 服务端内部错误 | `true` |
+
+错误数据固定为：
+
+```json
+{
+  "code": 4400,
+  "reason": "消息格式不合法",
+  "retryable": false
+}
+```
 
 握手失败时 WebSocket 还没建立，返回 HTTP 401/403，并在响应头 `X-Realtime-Error` 里带错误码名。
 
