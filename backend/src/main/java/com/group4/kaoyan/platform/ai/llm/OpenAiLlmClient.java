@@ -169,10 +169,21 @@ public class OpenAiLlmClient implements LlmClient {
                         "模型响应超时", true, 0, throwable);
             }
             if (cause instanceof WebClientRequestException) {
+                // Reactor Netty 的读超时会被包在 WebClientRequestException 里，
+                // 必须先看 cause chain，否则会误判成普通网络失败。
+                Throwable nested = cause.getCause();
+                while (nested != null && nested != cause) {
+                    if (nested instanceof ReadTimeoutException || nested instanceof TimeoutException) {
+                        return new LlmStreamException(LlmStreamException.TIMEOUT,
+                                "模型响应超时", true, 0, throwable);
+                    }
+                    nested = nested.getCause();
+                }
                 String message = cause.getMessage() == null ? "" : cause.getMessage().toLowerCase();
-                boolean timeout = message.contains("timeout") || message.contains("timed out");
+                boolean timeout = message.contains("timeout") || message.contains("timed out")
+                        || message.contains("response timeout");
                 return new LlmStreamException(timeout ? LlmStreamException.TIMEOUT : LlmStreamException.NETWORK_ERROR,
-                        timeout ? "模型连接超时" : "模型网络连接失败", true, 0, throwable);
+                        timeout ? "模型响应超时" : "模型网络连接失败", true, 0, throwable);
             }
             cause = cause.getCause();
         }
