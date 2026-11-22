@@ -39,6 +39,11 @@ public class ChatService {
         if (conversationId != null) {
             return requireOwned(userId, conversationId);
         }
+        return createConversation(userId, kbId, question);
+    }
+
+    /** 新建会话（不读登录态，流式核心与后台任务可直接调用）。 */
+    public ChatConversation createConversation(Long userId, Long kbId, String question) {
         ChatConversation c = new ChatConversation();
         c.setUserId(userId);
         c.setKbId(kbId);
@@ -48,6 +53,26 @@ public class ChatService {
         c.setUpdateTime(LocalDateTime.now());
         conversationMapper.insert(c);
         return c;
+    }
+
+    /**
+     * 严格按用户 ID 校验归属：不经过 {@link DataScopeService}（它依赖 HTTP 登录态），
+     * 供流式核心 / MQ 消费者使用。管理员跨用户查看历史仍走 {@link #messages} 的宽松口径。
+     */
+    public ChatConversation requireOwnedByUser(Long userId, Long conversationId) {
+        ChatConversation c = conversationMapper.selectById(conversationId);
+        if (c == null || (c.getDeleted() != null && c.getDeleted() == 1)) {
+            throw new BizException(404, "会话不存在");
+        }
+        if (userId == null || !userId.equals(c.getUserId())) {
+            throw new BizException(ErrorCode.NO_DATA_ACCESS, "无权访问该数据");
+        }
+        return c;
+    }
+
+    /** 落库前读取会话（存在、未删除、归属正确），供幂等/重试链路复用。 */
+    public ChatConversation findOwned(Long userId, Long conversationId) {
+        return requireOwnedByUser(userId, conversationId);
     }
 
     public List<ChatConversation> list(Long userId) {

@@ -26,7 +26,12 @@ public class AiProperties {
         private String model = "deepseek-chat";
         private double temperature = 0.3;
         private int maxTokens = 2048;
+        /** 兼容旧配置：未显式配置读取超时时，回落到该值 */
         private int timeoutSeconds = 60;
+        /** 建连超时（秒），独立于读取超时 */
+        private int connectTimeoutSeconds = 10;
+        /** 流式读取超时（秒）：两段增量之间允许的最长静默 */
+        private int readTimeoutSeconds = 60;
     }
 
     @Data
