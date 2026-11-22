@@ -141,6 +141,8 @@ kaoyan:
     temperature: ${LLM_TEMPERATURE:0.3}
     max-tokens: ${LLM_MAX_TOKENS:2048}
     timeout-seconds: ${LLM_TIMEOUT:60}
+    connect-timeout-seconds: ${LLM_CONNECT_TIMEOUT:10}
+    read-timeout-seconds: ${LLM_READ_TIMEOUT:60}
   embedding:
     base-url: ${EMBEDDING_BASE_URL:https://api.deepseek.com/v1}
     api-key: ${EMBEDDING_API_KEY:}

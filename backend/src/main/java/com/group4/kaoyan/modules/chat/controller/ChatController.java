@@ -6,7 +6,10 @@ import com.group4.kaoyan.common.R;
 import com.group4.kaoyan.modules.chat.entity.ChatConversation;
 import com.group4.kaoyan.modules.chat.entity.ChatMessage;
 import com.group4.kaoyan.modules.chat.service.ChatService;
-import com.group4.kaoyan.modules.chat.service.RagChatService;
+import com.group4.kaoyan.modules.chat.stream.AiRequestContext;
+import com.group4.kaoyan.modules.chat.stream.ChatSseAdapter;
+import com.group4.kaoyan.modules.chat.stream.ChatStreamCommand;
+import com.group4.kaoyan.modules.chat.stream.ChatStreamService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -14,11 +17,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * AI 对话与答疑（对齐《接口设计文档 V1.1 适配版》6.1 / 6.2）。
@@ -31,8 +36,8 @@ import java.util.List;
  *   <li>{@code POST /api/v1/chat/conversations/{id}/messages/stream} —— chat:send（SSE）。</li>
  * </ul>
  *
- * <p>兼容：{@code POST /api/v1/chat/stream} 保留为旧口径别名（会话 ID 走请求体），
- * 前端 P3 一律使用文档里的 {@code /messages/stream}。</p>
+ * <p>A-1 起，HTTP 层只做两件事：把登录态翻译成 {@link AiRequestContext}、
+ * 把统一事件流套上旧 SSE 适配器。业务编排全部在 {@link ChatStreamService}。</p>
  */
 @RestController
 @RequestMapping("/api/v1/chat")
@@ -40,27 +45,32 @@ import java.util.List;
 public class ChatController {
 
     private final ChatService chatService;
-    private final RagChatService ragChatService;
+    private final ChatStreamService chatStreamService;
+    private final ChatSseAdapter chatSseAdapter;
 
-    public record ChatReq(Long conversationId, Long kbId, String question) {
+    public record ChatReq(Long conversationId, Long kbId, String question, String clientMessageId) {
     }
 
     /** 文档口径：SSE 流式问答，会话 ID 在路径上。事件依次为 meta / references / delta / done */
     @SaCheckPermission("chat:send")
     @PostMapping(value = "/conversations/{conversationId}/messages/stream",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@PathVariable Long conversationId, @RequestBody ChatReq req) {
-        Long kbId = req == null ? null : req.kbId();
-        String question = req == null ? null : req.question();
-        return ragChatService.chat(StpUtil.getLoginIdAsLong(), conversationId, kbId, question);
+    public SseEmitter stream(@PathVariable Long conversationId,
+                             @RequestBody ChatReq req,
+                             @RequestHeader(value = "X-Request-Id", required = false) String requestId) {
+        ChatReq body = req == null ? new ChatReq(null, null, null, null) : req;
+        AiRequestContext context = contextOf(conversationId, body, requestId);
+        return chatSseAdapter.adapt(chatStreamService.stream(context, body.question()));
     }
 
     /** 兼容旧口径：会话 ID 放请求体；conversationId 为空表示新建会话。 */
     @SaCheckPermission("chat:send")
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamLegacy(@RequestBody ChatReq req) {
-        return ragChatService.chat(StpUtil.getLoginIdAsLong(),
-                req.conversationId(), req.kbId(), req.question());
+    public SseEmitter streamLegacy(@RequestBody ChatReq req,
+                                   @RequestHeader(value = "X-Request-Id", required = false) String requestId) {
+        ChatReq body = req == null ? new ChatReq(null, null, null, null) : req;
+        AiRequestContext context = contextOf(body.conversationId(), body, requestId);
+        return chatSseAdapter.adapt(chatStreamService.stream(context, body.question()));
     }
 
     @GetMapping("/conversations")
@@ -79,5 +89,13 @@ public class ChatController {
     public R<Void> delete(@PathVariable Long id) {
         chatService.delete(StpUtil.getLoginIdAsLong(), id);
         return R.ok();
+    }
+
+    private AiRequestContext contextOf(Long conversationId, ChatReq req, String requestId) {
+        String traceId = requestId == null || requestId.isBlank() ? UUID.randomUUID().toString() : requestId;
+        ChatStreamCommand command = new ChatStreamCommand(
+                StpUtil.getLoginIdAsLong(), conversationId, req.kbId(), req.question(),
+                traceId, req.clientMessageId());
+        return AiRequestContext.fromHttp(command);
     }
 }

@@ -35,8 +35,21 @@ public class RetrievalService {
     public record Retrieved(String docName, long chunkId, long docId, String content, float score) {
     }
 
+    /**
+     * 旧签名：从当前 HTTP 登录态判断管理员视角，仅供尚未迁移的 HTTP 调用方使用。
+     *
+     * <p>流式核心（含 MQ 消费者）必须使用 {@link #retrieve(Long, String, boolean)}，
+     * 否则后台线程没有 {@code StpUtil} 上下文会直接失败。</p>
+     */
     public List<Retrieved> retrieve(Long kbId, String query) {
-        String expr = buildExpr(kbId);
+        return retrieve(kbId, query, StpUtil.hasRole(RoleConstants.SYSTEM_ADMIN));
+    }
+
+    /**
+     * 显式传入“是否管理员视角”的检索入口：不读取任何线程上下文，HTTP / 后台任务通用。
+     */
+    public List<Retrieved> retrieve(Long kbId, String query, boolean adminScope) {
+        String expr = buildExpr(kbId, adminScope);
         if (expr == null) {
             return List.of();
         }
@@ -49,8 +62,8 @@ public class RetrievalService {
     }
 
     /** 返回 null 表示“当前用户没有可见知识库”，直接跳过检索 */
-    private String buildExpr(Long kbId) {
-        if (StpUtil.hasRole(RoleConstants.SYSTEM_ADMIN)) {
+    private String buildExpr(Long kbId, boolean adminScope) {
+        if (adminScope) {
             if (kbId == null) {
                 return "id >= 0";
             }
