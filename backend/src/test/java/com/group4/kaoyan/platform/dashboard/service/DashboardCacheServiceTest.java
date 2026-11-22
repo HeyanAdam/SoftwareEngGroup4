@@ -95,6 +95,21 @@ class DashboardCacheServiceTest {
     }
 
     @Test
+    @DisplayName("Redis 无响应：单次缓存 IO 超 300ms 即降级，接口不被拖住")
+    void getDegradesFastWhenRedisHangs() {
+        when(valueOperations.get(anyString())).thenAnswer(invocation -> {
+            Thread.sleep(3000);
+            return null;
+        });
+
+        long start = System.currentTimeMillis();
+        assertTrue(cacheService.get(7).isEmpty());
+        long cost = System.currentTimeMillis() - start;
+
+        assertTrue(cost < 1000, "缓存超时应在 300ms 量级，实际耗时 " + cost + "ms");
+    }
+
+    @Test
     @DisplayName("Redis 不可用：读取与写入都降级，不抛异常")
     void redisFailureDegradesSilently() {
         when(valueOperations.get(anyString())).thenThrow(new RuntimeException("redis 连接失败"));

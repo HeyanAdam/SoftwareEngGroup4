@@ -1,0 +1,5 @@
+name	messages_ready	messages_unacknowledged	consumers
+kaoyan.doc.parse.queue	0	0	1
+doc_parse_queue	0	0	0
+kaoyan.doc.parse.dlq	1	0	0
+foundation.test.queue	0	0	0

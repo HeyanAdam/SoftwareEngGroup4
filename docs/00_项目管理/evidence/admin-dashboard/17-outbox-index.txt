@@ -1,0 +1,30 @@
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment	Visible	Expression
+sys_message_outbox	0	PRIMARY	1	id	A	0	NULL	NULL		BTREE			YES	NULL
+sys_message_outbox	0	uk_outbox_event	1	event_id	A	0	NULL	NULL		BTREE			YES	NULL
+sys_message_outbox	1	idx_outbox_pending	1	status	A	0	NULL	NULL		BTREE			YES	NULL
+sys_message_outbox	1	idx_outbox_pending	2	next_retry_at	A	0	NULL	NULL	YES	BTREE			YES	NULL
+sys_message_outbox	1	idx_outbox_biz	1	message_type	A	0	NULL	NULL		BTREE			YES	NULL
+sys_message_outbox	1	idx_outbox_biz	2	biz_key	A	0	NULL	NULL	YES	BTREE			YES	NULL
+sys_message_outbox	1	idx_outbox_type_status	1	message_type	A	0	NULL	NULL		BTREE			YES	NULL
+sys_message_outbox	1	idx_outbox_type_status	2	status	A	0	NULL	NULL		BTREE			YES	NULL
+sys_message_outbox	1	idx_outbox_type_status	3	next_retry_at	A	0	NULL	NULL	YES	BTREE			YES	NULL
+*************************** 1. row ***************************
+           Name: sys_message_outbox
+         Engine: InnoDB
+        Version: 10
+     Row_format: Dynamic
+           Rows: 0
+ Avg_row_length: 0
+    Data_length: 16384
+Max_data_length: 0
+   Index_length: 65536
+      Data_free: 0
+ Auto_increment: 2
+    Create_time: 2026-11-19 16:52:56
+    Update_time: NULL
+     Check_time: NULL
+      Collation: utf8mb4_general_ci
+       Checksum: NULL
+ Create_options: 
+        Comment: ???? Outbox

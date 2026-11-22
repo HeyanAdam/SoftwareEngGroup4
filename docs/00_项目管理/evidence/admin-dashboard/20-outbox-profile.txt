@@ -1,0 +1,11 @@
+mysql: [Warning] Using a password on the command line interface can be insecure.
+pending_retry
+0
+failed
+0
+stuck
+0
+Query_ID	Duration	Query
+1	0.00171050	SELECT COUNT(*) AS pending_retry FROM sys_message_outbox WHERE status IN ('PENDING','RETRY_WAIT')
+2	0.00053475	SELECT COUNT(*) AS failed FROM sys_message_outbox WHERE status='FAILED'
+3	0.00023875	SELECT COUNT(*) AS stuck FROM sys_message_outbox WHERE status='PUBLISHING' AND update_time < NOW() - INTERVAL 5 MINUTE

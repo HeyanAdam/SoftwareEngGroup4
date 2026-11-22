@@ -1,0 +1,68 @@
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "cards": {
+      "totalUsers": 0,
+      "enabledUsers": 0,
+      "todayLogins": 0,
+      "todayLoginFailures": 0,
+      "files": 0,
+      "storageBytes": 0,
+      "documents": 0,
+      "failedDocuments": 0,
+      "conversations": 0,
+      "chatMessages": 0,
+      "todayChatMessages": 0
+    },
+    "trend": {
+      "dates": [
+        "11-16",
+        "11-17",
+        "11-18",
+        "11-19",
+        "11-20",
+        "11-21",
+        "11-22"
+      ],
+      "logins": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "uploads": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "chatMessages": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "system": {
+      "mysql": "UP",
+      "redis": "UP",
+      "rabbitmq": "UP",
+      "docParseReady": 0,
+      "docParseConsumers": 1,
+      "docParseDlq": 1,
+      "outboxPending": 0,
+      "outboxFailed": 0
+    },
+    "generatedAt": "2026-11-22T14:02:04.8424364+08:00"
+  }
+}

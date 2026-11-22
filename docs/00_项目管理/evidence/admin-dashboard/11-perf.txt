@@ -1,0 +1,43 @@
+# 数字大屏（丙）性能与数据库侧证据
+# 环境：Windows 本地，后端 java -jar（JDK17），Docker Desktop（MySQL 8 / Redis / RabbitMQ）
+# 采集时间：2026-11-22 14:00–14:30（Asia/Shanghai）
+
+## 1. HTTP 接口耗时（GET /api/v1/admin/dashboard/summary?days=7）
+
+### 1.1 首轮（冷启动 + 缓存命中，10 次手工刷新）
+cold(ms)=393
+warm-hit(ms)=10
+10-refresh(ms)=8,9,8,11,8,11,9,8,10,8
+max=11 avg=9
+
+### 1.2 第二轮（连续 30 次顺序请求，脚本计时，30/30 全部 200）
+1:393  2:9   3:7   4:8   5:8   6:9   7:6   8:10  9:8   10:8
+11:6   12:8  13:12  14:9  15:8  16:7  17:9  18:10 19:8  20:8
+21:8   22:8  23:8   24:7  25:7  26:7  27:10 28:6  29:8  30:7
+count=30 min=6 avg=20.9(含首次冷启动) max=393 p95=12
+
+结论：首次冷启动 393ms（含 Redis/MySQL/RabbitMQ 三项探活与两次缓存写），
+缓存命中后稳定在 6–12ms；连续刷新 30 次无衰减、无慢请求、无错误。
+
+## 2. 数据库侧（sys_message_outbox）
+
+### 2.1 索引（17-outbox-index.txt）
+idx_outbox_pending(status, next_retry_at)、idx_outbox_type_status(message_type, status, next_retry_at)、
+uk_outbox_event(event_id)、idx_outbox_biz(message_type, biz_key)，均为 BTREE。
+
+### 2.2 执行计划（18-outbox-explain.txt）
+SELECT COUNT(*) ... WHERE status='PENDING'
+  type=ref key=idx_outbox_pending key_len=130 rows=1 Extra=Using index
+SELECT COUNT(*) ... WHERE status='PUBLISHING' AND update_time < NOW()-INTERVAL 5 MINUTE
+  type=ref key=idx_outbox_pending key_len=130 rows=1 Extra=Using where
+两条指标 SQL 均走索引、无全表扫描（表当前仅 1 行，索引覆盖为 Using index / Using where）。
+
+### 2.3 SQL 服务端实际耗时（SET profiling=1 / SHOW PROFILES，20-outbox-profile.txt）
+pending_retry(status IN ('PENDING','RETRY_WAIT'))  0.00171050 s ≈ 1.71 ms
+failed(status='FAILED')                            0.00053475 s ≈ 0.53 ms
+stuck(PUBLISHING + update_time 超 5 分钟)           0.00023875 s ≈ 0.24 ms
+
+说明：三条 COUNT 均 < 2ms，远低于"慢查询"口径（long_query_time=10s，slow_query_log 默认关闭）。
+即大屏指标查询不会给 DB 带来额外压力，连续刷新 30 次也未出现慢查询。
+（MySQL 容器内 performance_schema 的 statement 计时含连接/容器开销，数值不可直接作为 SQL 耗时，
+ 故最终以服务端 profiling 结果为准；performance_schema 仅作交叉验证，证据文件未保留。）
