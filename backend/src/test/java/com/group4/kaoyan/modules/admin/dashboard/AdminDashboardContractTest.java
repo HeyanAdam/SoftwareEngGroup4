@@ -10,7 +10,7 @@ import com.group4.kaoyan.modules.admin.dashboard.dto.AdminDashboardSummaryVO;
 import com.group4.kaoyan.modules.admin.dashboard.dto.DashboardCardsVO;
 import com.group4.kaoyan.modules.admin.dashboard.dto.DashboardSystemVO;
 import com.group4.kaoyan.modules.admin.dashboard.dto.DashboardTrendVO;
-import com.group4.kaoyan.platform.dashboard.service.DashboardSummaryService;
+import com.group4.kaoyan.modules.admin.dashboard.service.DashboardSummaryProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -40,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("大屏接口契约")
 class AdminDashboardContractTest {
 
-    private final DashboardSummaryService service = mock(DashboardSummaryService.class);
+    private final DashboardSummaryProvider service = mock(DashboardSummaryProvider.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final MockMvc mockMvc = MockMvcBuilders
             .standaloneSetup(new AdminDashboardController(service))
@@ -66,7 +66,7 @@ class AdminDashboardContractTest {
     @Test
     @DisplayName("GET /admin/dashboard/summary?days=7 返回 200 与统一响应体")
     void summaryReturnsWrappedData() throws Exception {
-        when(service.summary(7)).thenReturn(sample());
+        when(service.build(7)).thenReturn(sample());
 
         mockMvc.perform(get("/api/v1/admin/dashboard/summary")
                         .param("days", "7")
@@ -81,7 +81,7 @@ class AdminDashboardContractTest {
     @Test
     @DisplayName("days=8 等非法值：400 + 10000")
     void invalidDaysReturns400() throws Exception {
-        when(service.summary(anyInt()))
+        when(service.build(anyInt()))
                 .thenThrow(new com.group4.kaoyan.common.BizException(
                         com.group4.kaoyan.common.ErrorCode.PARAM_INVALID, "days 只允许 7、14、30"));
 

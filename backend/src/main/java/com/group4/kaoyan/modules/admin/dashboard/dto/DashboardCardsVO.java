@@ -33,4 +33,21 @@ public class DashboardCardsVO {
     private Long conversations;
     private Long chatMessages;
     private Long todayChatMessages;
+
+    /** 全 0 的合法空卡片，字段齐全，避免降级时前端出现 null/空白。 */
+    public static DashboardCardsVO empty() {
+        DashboardCardsVO cards = new DashboardCardsVO();
+        cards.setTotalUsers(0L);
+        cards.setEnabledUsers(0L);
+        cards.setTodayLogins(0L);
+        cards.setTodayLoginFailures(0L);
+        cards.setFiles(0L);
+        cards.setStorageBytes(0L);
+        cards.setDocuments(0L);
+        cards.setFailedDocuments(0L);
+        cards.setConversations(0L);
+        cards.setChatMessages(0L);
+        cards.setTodayChatMessages(0L);
+        return cards;
+    }
 }

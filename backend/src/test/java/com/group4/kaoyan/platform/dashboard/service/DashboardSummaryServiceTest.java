@@ -5,7 +5,7 @@ import com.group4.kaoyan.common.ErrorCode;
 import com.group4.kaoyan.modules.admin.dashboard.dto.AdminDashboardSummaryVO;
 import com.group4.kaoyan.modules.admin.dashboard.dto.DashboardCardsVO;
 import com.group4.kaoyan.modules.admin.dashboard.dto.DashboardTrendVO;
-import com.group4.kaoyan.modules.admin.dashboard.service.DashboardSummaryProvider;
+import com.group4.kaoyan.modules.admin.dashboard.service.DashboardStatisticsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.when;
 class DashboardSummaryServiceTest {
 
     @SuppressWarnings("unchecked")
-    private final ObjectProvider<DashboardSummaryProvider> providers = mock(ObjectProvider.class);
+    private final ObjectProvider<DashboardStatisticsService> providers = mock(ObjectProvider.class);
     private final DashboardCacheService cache = mock(DashboardCacheService.class);
     private final SystemHealthMetricsService health = mock(SystemHealthMetricsService.class);
     private final RabbitQueueMetricsService queues = mock(RabbitQueueMetricsService.class);
@@ -90,9 +90,9 @@ class DashboardSummaryServiceTest {
     @DisplayName("缓存未命中：调用 Provider、拼装指标并回填缓存")
     void cacheMissRebuildsAndStores() {
         when(cache.get(14)).thenReturn(Optional.empty());
-        DashboardSummaryProvider provider = mock(DashboardSummaryProvider.class);
+        DashboardStatisticsService provider = mock(DashboardStatisticsService.class);
         when(providers.getIfAvailable()).thenReturn(provider);
-        when(provider.buildBusiness(14)).thenReturn(business(14, 500L));
+        when(provider.build(14)).thenReturn(business(14, 500L));
 
         AdminDashboardSummaryVO result = service.summary(14);
 

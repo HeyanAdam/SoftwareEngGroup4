@@ -6,10 +6,12 @@ import com.group4.kaoyan.modules.admin.dashboard.dto.AdminDashboardSummaryVO;
 import com.group4.kaoyan.modules.admin.dashboard.dto.DashboardCardsVO;
 import com.group4.kaoyan.modules.admin.dashboard.dto.DashboardSystemVO;
 import com.group4.kaoyan.modules.admin.dashboard.dto.DashboardTrendVO;
+import com.group4.kaoyan.modules.admin.dashboard.service.DashboardStatisticsService;
 import com.group4.kaoyan.modules.admin.dashboard.service.DashboardSummaryProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -43,8 +45,9 @@ import java.util.stream.IntStream;
  */
 @Slf4j
 @Service
+@Primary
 @RequiredArgsConstructor
-public class DashboardSummaryService {
+public class DashboardSummaryService implements DashboardSummaryProvider {
 
     /** 只允许的趋势天数。 */
     public static final Set<Integer> ALLOWED_DAYS = Set.of(7, 14, 30);
@@ -55,12 +58,13 @@ public class DashboardSummaryService {
     /** 趋势日期标签格式。 */
     private static final DateTimeFormatter DATE_LABEL = DateTimeFormatter.ofPattern("MM-dd");
 
+    /** 生成时间固定到秒，与甲的分册契约样例一致（如 2026-11-22T14:50:44+08:00）。 */
     private static final DateTimeFormatter GENERATED_AT =
-            DateTimeFormatter.ISO_OFFSET_DATE_TIME;
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     private final DashboardCacheService cacheService;
-    /** 业务统计提供者：未实现时不报错，退化为空结果。 */
-    private final ObjectProvider<DashboardSummaryProvider> summaryProviders;
+    /** 业务统计提供者（甲的实现）：Bean 缺失时不报错，退化为全 0 空结果。 */
+    private final ObjectProvider<DashboardStatisticsService> businessProviders;
     private final SystemHealthMetricsService systemHealthMetricsService;
     private final RabbitQueueMetricsService rabbitQueueMetricsService;
     private final OutboxMetricsService outboxMetricsService;
@@ -71,6 +75,12 @@ public class DashboardSummaryService {
      * @param days 7 / 14 / 30
      * @return 缓存命中直接返回快照；未命中则重新聚合后回填缓存
      */
+    /** 接口入口：Controller 注入的是 DashboardSummaryProvider，这里转给带缓存的 summary。 */
+    @Override
+    public AdminDashboardSummaryVO build(int days) {
+        return summary(days);
+    }
+
     public AdminDashboardSummaryVO summary(int days) {
         requireAllowedDays(days);
 
@@ -104,18 +114,18 @@ public class DashboardSummaryService {
     }
 
     /**
-     * 业务统计：有 Provider 就调用，没有就返回全 0 的合法空结果。
+     * 业务统计：有甲的实现就调用，没有就返回全 0 的合法空结果。
      * 这里不让 Bean 缺失变成启动失败，也不假装有数据。
      */
     private AdminDashboardSummaryVO buildBusiness(int days) {
-        DashboardSummaryProvider provider = summaryProviders.getIfAvailable();
+        DashboardStatisticsService provider = businessProviders.getIfAvailable();
         if (provider == null) {
             AdminDashboardSummaryVO empty = new AdminDashboardSummaryVO();
             empty.setCards(DashboardCardsVO.empty());
             empty.setTrend(emptyTrend(days));
             return empty;
         }
-        return provider.buildBusiness(days);
+        return provider.build(days);
     }
 
     /**

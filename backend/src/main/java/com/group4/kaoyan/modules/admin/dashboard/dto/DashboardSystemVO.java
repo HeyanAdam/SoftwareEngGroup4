@@ -20,4 +20,18 @@ public class DashboardSystemVO {
     private Long docParseDlq;
     private Long outboxPending;
     private Long outboxFailed;
+
+    /** 全 DOWN、计数全 0 的占位结构，仅用于兜底，不用于真实探活结果。 */
+    public static DashboardSystemVO down() {
+        DashboardSystemVO system = new DashboardSystemVO();
+        system.setMysql("DOWN");
+        system.setRedis("DOWN");
+        system.setRabbitmq("DOWN");
+        system.setDocParseReady(0L);
+        system.setDocParseConsumers(0L);
+        system.setDocParseDlq(0L);
+        system.setOutboxPending(0L);
+        system.setOutboxFailed(0L);
+        return system;
+    }
 }
