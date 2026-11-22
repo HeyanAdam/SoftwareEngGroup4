@@ -1,0 +1,8 @@
+{
+  "admin_status": 200,
+  "student_code": 10008,
+  "noauth_code": 10001,
+  "auditor_status": 200,
+  "noauth_status": 401,
+  "student_status": 403
+}

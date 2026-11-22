@@ -93,4 +93,19 @@
         WHERE status = 'PUBLISHING'
           AND update_time &lt; #{staleBefore}
     </update>
+
+    <!-- 大屏 Outbox 指标：只 COUNT，不读 payload_json -->
+    <select id="countByStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_message_outbox
+        WHERE status = #{status}
+    </select>
+
+    <!-- 卡在 PUBLISHING 超过阈值的孤儿记录（实例崩溃兜底口径） -->
+    <select id="countStuckPublishing" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_message_outbox
+        WHERE status = 'PUBLISHING'
+          AND update_time &lt; #{staleBefore}
+    </select>
 </mapper>

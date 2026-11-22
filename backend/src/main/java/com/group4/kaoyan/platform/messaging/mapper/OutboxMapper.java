@@ -25,4 +25,18 @@ public interface OutboxMapper {
 
     /** 长时间停在 PUBLISHING 的记录复位为 RETRY_WAIT（实例崩溃兜底）。 */
     int resetStuck(@Param("staleBefore") LocalDateTime staleBefore);
+
+    /**
+     * 按状态计数（大屏 Outbox 指标用）。
+     *
+     * <p>只 COUNT，不 SELECT payload_json：大屏永远拿不到消息正文。</p>
+     */
+    long countByStatus(@Param("status") String status);
+
+    /**
+     * 统计长时间停在 PUBLISHING 的记录数（疑似实例崩溃遗留）。
+     *
+     * @param staleBefore 早于该 update_time 的 PUBLISHING 视为卡住，通常传 now - 5 分钟
+     */
+    long countStuckPublishing(@Param("staleBefore") LocalDateTime staleBefore);
 }

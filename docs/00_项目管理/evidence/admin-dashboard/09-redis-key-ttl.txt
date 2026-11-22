@@ -1,0 +1,3 @@
+keys=admin:dashboard:summary:v1:7
+ttl(admin:dashboard:summary:v1:7)=5
+
