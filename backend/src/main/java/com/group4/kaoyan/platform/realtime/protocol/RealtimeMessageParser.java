@@ -68,6 +68,8 @@ public class RealtimeMessageParser {
 
         if (RealtimeProtocol.TYPE_CHAT_SEND.equals(type)) {
             validateChatSend(data, clientMessageId);
+        } else if (RealtimeProtocol.TYPE_CHAT_CANCEL.equals(type)) {
+            validateChatCancel(data);
         }
 
         return new RealtimeEnvelope(version, type, requestId, clientMessageId, data);
@@ -144,6 +146,22 @@ public class RealtimeMessageParser {
         }
         if (!node.isIntegralNumber()) {
             throw new RealtimeProtocolException(RealtimeErrorCode.BAD_MESSAGE, field + " 必须是整数或 null");
+        }
+    }
+
+    private void validateChatCancel(JsonNode data) {
+        if (data == null || !data.isObject()) {
+            throw new RealtimeProtocolException(RealtimeErrorCode.BAD_MESSAGE,
+                    "chat.cancel 缺少 data 对象");
+        }
+        JsonNode streamId = data.get("streamId");
+        if (streamId == null || !streamId.isTextual() || streamId.asText().isBlank()) {
+            throw new RealtimeProtocolException(RealtimeErrorCode.BAD_MESSAGE,
+                    "chat.cancel 的 streamId 不能为空");
+        }
+        if (streamId.asText().length() > properties.getMaxFieldLength()) {
+            throw new RealtimeProtocolException(RealtimeErrorCode.BAD_MESSAGE,
+                    "streamId 不能超过 " + properties.getMaxFieldLength() + " 个字符");
         }
     }
 }

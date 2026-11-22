@@ -51,6 +51,18 @@ class RealtimeMessageParserTest {
     }
 
     @Test
+    @DisplayName("合法 chat.cancel：streamId 必填")
+    void validChatCancelShouldParse() {
+        RealtimeEnvelope envelope = parser.parse("""
+                {"version":1,"type":"chat.cancel","requestId":"cancel-1",
+                 "data":{"streamId":"stream-1"}}
+                """);
+
+        assertEquals(RealtimeProtocol.TYPE_CHAT_CANCEL, envelope.type());
+        assertEquals("stream-1", envelope.text("streamId"));
+    }
+
+    @Test
     @DisplayName("不是 JSON：4400")
     void invalidJsonShouldFail() {
         RealtimeProtocolException ex = assertThrows(RealtimeProtocolException.class,
@@ -108,6 +120,17 @@ class RealtimeMessageParserTest {
 
         assertEquals(RealtimeErrorCode.BAD_MESSAGE, ex.getErrorCode());
         assertNotNull(ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("chat.cancel 缺 streamId：4400")
+    void chatCancelWithoutStreamIdShouldFail() {
+        RealtimeProtocolException ex = assertThrows(RealtimeProtocolException.class,
+                () -> parser.parse("""
+                        {"version":1,"type":"chat.cancel","requestId":"cancel-1","data":{}}
+                        """));
+
+        assertEquals(RealtimeErrorCode.BAD_MESSAGE, ex.getErrorCode());
     }
 
     @Test

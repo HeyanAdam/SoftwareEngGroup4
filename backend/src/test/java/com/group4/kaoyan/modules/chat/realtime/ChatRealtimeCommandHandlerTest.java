@@ -10,6 +10,7 @@ import com.group4.kaoyan.modules.chat.entity.ChatConversation;
 import com.group4.kaoyan.modules.chat.service.ChatService;
 import com.group4.kaoyan.modules.chat.stream.ChatStreamEvent;
 import com.group4.kaoyan.modules.chat.stream.ChatStreamService;
+import com.group4.kaoyan.modules.chat.stream.ChatStreamStore;
 import com.group4.kaoyan.platform.realtime.command.RealtimeCommandContext;
 import com.group4.kaoyan.platform.realtime.config.RealtimeProperties;
 import com.group4.kaoyan.platform.realtime.delivery.RealtimeDeliveryPort;
@@ -46,6 +47,7 @@ class ChatRealtimeCommandHandlerTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private ChatStreamService streamService;
     private ChatService chatService;
+    private ChatStreamStore streamStore;
     private RbacSnapshotCache rbacCache;
     private AccountStatusGuard accountGuard;
     private RealtimeChatRateLimiter rateLimiter;
@@ -56,6 +58,7 @@ class ChatRealtimeCommandHandlerTest {
     void setUp() {
         streamService = mock(ChatStreamService.class);
         chatService = mock(ChatService.class);
+        streamStore = mock(ChatStreamStore.class);
         rbacCache = mock(RbacSnapshotCache.class);
         accountGuard = mock(AccountStatusGuard.class);
         rateLimiter = mock(RealtimeChatRateLimiter.class);
@@ -68,6 +71,7 @@ class ChatRealtimeCommandHandlerTest {
         handler = new ChatRealtimeCommandHandler(
                 streamService,
                 chatService,
+                streamStore,
                 rbacCache,
                 accountGuard,
                 rateLimiter,
@@ -91,7 +95,7 @@ class ChatRealtimeCommandHandlerTest {
                 ChatStreamEvent.payload("conversationId", 10L));
         ChatStreamEvent delta = ChatStreamEvent.of("delta", "req-1", "stream-1", 2,
                 ChatStreamEvent.payload("content", "选 B"));
-        when(streamService.stream(any(), eq("这道题为什么选 B")))
+        when(streamService.stream(any(), eq("这道题为什么选 B"), any()))
                 .thenReturn(Flux.just(meta, delta));
 
         CountDownLatch ackLatch = new CountDownLatch(1);
@@ -109,7 +113,7 @@ class ChatRealtimeCommandHandlerTest {
         assertEquals(10L, ((Map<?, ?>) ack.get().data()).get("conversationId"));
         assertNotNull(((Map<?, ?>) ack.get().data()).get("streamId"));
 
-        verify(streamService, timeout(2000)).stream(any(), eq("这道题为什么选 B"));
+        verify(streamService, timeout(2000)).stream(any(), eq("这道题为什么选 B"), any());
         verify(delivery, timeout(2000).times(2)).pushToUser(eq(7L),
                 any(RealtimeOutboundMessage.class));
     }
@@ -130,7 +134,7 @@ class ChatRealtimeCommandHandlerTest {
         assertTrue(errorLatch.await(2, TimeUnit.SECONDS));
         assertEquals(RealtimeProtocol.TYPE_ERROR, error.get().type());
         assertEquals(4429, ((Map<?, ?>) error.get().data()).get("code"));
-        verify(streamService, never()).stream(any(), any());
+        verify(streamService, never()).stream(any(), any(), any());
         verify(delivery, never()).pushToUser(anyLong(), any());
     }
 
@@ -169,7 +173,44 @@ class ChatRealtimeCommandHandlerTest {
 
         assertTrue(errorLatch.await(2, TimeUnit.SECONDS));
         assertEquals(4403, ((Map<?, ?>) error.get().data()).get("code"));
-        verify(streamService, never()).stream(any(), any());
+        verify(streamService, never()).stream(any(), any(), any());
+    }
+
+    @Test
+    void shouldCancelActiveStream() throws Exception {
+        when(streamService.cancel(7L, "stream-1")).thenReturn(true);
+
+        handler.handle(new RealtimeCommandContext(7L, "tab-1", "chat", delivery, message -> {
+        }), cancelEnvelope("cancel-1", "stream-1"));
+
+        verify(streamService, timeout(2000)).cancel(7L, "stream-1");
+        verify(delivery, never()).pushToUser(anyLong(), any());
+    }
+
+    @Test
+    void repeatedCancelForFinishedStreamShouldReturnDoneIdempotently() throws Exception {
+        when(streamService.cancel(7L, "stream-finished")).thenReturn(false);
+        com.group4.kaoyan.modules.chat.entity.ChatMessage assistant =
+                new com.group4.kaoyan.modules.chat.entity.ChatMessage();
+        assistant.setId(99L);
+        assistant.setUserId(7L);
+        assistant.setContent("已保留的半段回答");
+        assistant.setStatus(com.group4.kaoyan.modules.chat.entity.ChatMessage.STATUS_CANCELLED);
+        assistant.setLastSequence(8L);
+        when(chatService.findAssistantByStreamId("stream-finished")).thenReturn(assistant);
+
+        CountDownLatch doneLatch = new CountDownLatch(1);
+        AtomicReference<RealtimeOutboundMessage> done = new AtomicReference<>();
+        handler.handle(new RealtimeCommandContext(7L, "tab-1", "chat", delivery, message -> {
+            done.set(message);
+            doneLatch.countDown();
+        }), cancelEnvelope("cancel-2", "stream-finished"));
+
+        assertTrue(doneLatch.await(2, TimeUnit.SECONDS));
+        assertEquals(RealtimeProtocol.TYPE_DONE, done.get().type());
+        assertEquals("cancelled", ((Map<?, ?>) done.get().data()).get("finishReason"));
+        assertEquals(99L, ((Map<?, ?>) done.get().data()).get("messageId"));
+        assertEquals(8L, ((Map<?, ?>) done.get().data()).get("lastSequence"));
     }
 
     private RealtimeEnvelope chatEnvelope(String requestId, String clientMessageId, String content)
@@ -179,5 +220,12 @@ class ChatRealtimeCommandHandlerTest {
                 "content", content)));
         return new RealtimeEnvelope(1, RealtimeProtocol.TYPE_CHAT_SEND,
                 requestId, clientMessageId, data);
+    }
+
+    private RealtimeEnvelope cancelEnvelope(String requestId, String streamId) throws Exception {
+        JsonNode data = objectMapper.readTree(objectMapper.writeValueAsString(Map.of(
+                "streamId", streamId)));
+        return new RealtimeEnvelope(1, RealtimeProtocol.TYPE_CHAT_CANCEL,
+                requestId, null, data);
     }
 }

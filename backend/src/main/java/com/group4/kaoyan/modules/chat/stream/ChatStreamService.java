@@ -44,6 +44,7 @@ public class ChatStreamService {
     private final LlmClient llmClient;
     private final AiProperties props;
     private final ObjectMapper objectMapper;
+    private final ChatCancellationRegistry cancellationRegistry;
 
     public Flux<ChatStreamEvent> stream(AiRequestContext context, String question) {
         return stream(context, question, ChatStreamLifecycle.NOOP);
@@ -68,6 +69,8 @@ public class ChatStreamService {
 
         private volatile Disposable subscription;
         private volatile boolean cancelled;
+        private volatile ChatCancellationRegistry.Registration cancellationRegistration;
+        private final Object emitLock = new Object();
 
         private ChatConversation conversation;
         private ChatMessage userMessage;
@@ -84,7 +87,13 @@ public class ChatStreamService {
         }
 
         private void start() {
+            cancellationRegistration = cancellationRegistry.register(
+                    ctx.userId(), ctx.streamId(), this::finishCancelled);
             sink.onCancel(() -> {
+                if (!finished.compareAndSet(false, true)) {
+                    closeCancellationRegistration();
+                    return;
+                }
                 cancelled = true;
                 Disposable sub = subscription;
                 if (sub != null) {
@@ -96,7 +105,7 @@ public class ChatStreamService {
                     persistAssistantIfPossible(null, "FAILED",
                             "客户端断开，仅保存已生成片段");
                 }
-                finished.set(true);
+                closeCancellationRegistration();
             });
 
             if (question == null || question.isBlank()) {
@@ -152,6 +161,7 @@ public class ChatStreamService {
             if (cancelled || !finished.compareAndSet(false, true)) {
                 return;
             }
+            closeCancellationRegistration();
             ChatMessage saved = persistAssistantIfPossible(null, "COMPLETED", null);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("messageId", saved == null ? null : saved.getId());
@@ -167,6 +177,7 @@ public class ChatStreamService {
             if (cancelled || !finished.compareAndSet(false, true)) {
                 return;
             }
+            closeCancellationRegistration();
             ChatMessage saved = persistAssistantIfPossible(error, "FAILED", safeMessage(error));
             String code = errorCodeOf(error);
             boolean retryable = error instanceof LlmStreamException llm && llm.isRetryable();
@@ -181,6 +192,41 @@ public class ChatStreamService {
             data.put("partialChars", emittedChars);
             emit(ChatStreamEvent.TYPE_ERROR, data);
             sink.complete();
+        }
+
+        private void finishCancelled() {
+            if (!finished.compareAndSet(false, true)) {
+                closeCancellationRegistration();
+                return;
+            }
+            synchronized (emitLock) {
+                cancelled = true;
+                Disposable sub = subscription;
+                if (sub != null) {
+                    sub.dispose();
+                }
+                ChatMessage saved = persistAssistantIfPossible(null,
+                        ChatMessage.STATUS_CANCELLED, "用户主动停止生成");
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("messageId", saved == null ? null : saved.getId());
+                data.put("model", props.getLlm().getModel());
+                data.put("finishReason", "cancelled");
+                data.put("partialChars", answer.length());
+                ChatStreamEvent event = ChatStreamEvent.of(
+                        ChatStreamEvent.TYPE_DONE,
+                        ctx.requestId(),
+                        ctx.streamId(),
+                        sequence.incrementAndGet(),
+                        data);
+                sink.next(event);
+                try {
+                    lifecycle.onEvent(event);
+                } catch (Exception e) {
+                    log.warn("取消事件旁路处理失败 streamId={}：{}", ctx.streamId(), e.getMessage());
+                }
+                sink.complete();
+            }
+            closeCancellationRegistration();
         }
 
         private ChatMessage persistAssistantIfPossible(Throwable error, String status, String errorMessage) {
@@ -204,18 +250,33 @@ public class ChatStreamService {
         }
 
         private void emit(String type, Map<String, Object> data) {
-            if (cancelled) {
-                return;
-            }
-            ChatStreamEvent event = ChatStreamEvent.of(type, ctx.requestId(), ctx.streamId(),
-                    sequence.incrementAndGet(), data);
-            sink.next(event);
-            try {
-                lifecycle.onEvent(event);
-            } catch (Exception e) {
-                log.warn("流式事件旁路处理失败（不影响主流程）：{}", e.getMessage());
+            synchronized (emitLock) {
+                if (cancelled) {
+                    return;
+                }
+                ChatStreamEvent event = ChatStreamEvent.of(type, ctx.requestId(), ctx.streamId(),
+                        sequence.incrementAndGet(), data);
+                sink.next(event);
+                try {
+                    lifecycle.onEvent(event);
+                } catch (Exception e) {
+                    log.warn("流式事件旁路处理失败（不影响主流程）：{}", e.getMessage());
+                }
             }
         }
+
+        private void closeCancellationRegistration() {
+            ChatCancellationRegistry.Registration registration = cancellationRegistration;
+            if (registration != null) {
+                registration.close();
+                cancellationRegistration = null;
+            }
+        }
+    }
+
+    /** 取消指定用户的活跃流；流不存在、已结束或不属于该用户时返回 false。 */
+    public boolean cancel(Long userId, String streamId) {
+        return cancellationRegistry.cancel(userId, streamId);
     }
 
     /** 管理员可见文档 id / 切片 id；普通学生只拿脱敏文件名、摘要与相似度。 */
