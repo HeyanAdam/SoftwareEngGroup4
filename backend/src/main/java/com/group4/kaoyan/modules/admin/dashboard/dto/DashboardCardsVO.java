@@ -3,62 +3,34 @@ package com.group4.kaoyan.modules.admin.dashboard.dto;
 import lombok.Data;
 
 /**
- * 大屏顶部 KPI 卡片。
+ * 运营大屏 KPI 卡片。
  *
- * <p>字段与前端 {@code frontend/src/features/admin/dashboard/types.ts} 的
- * {@code DashboardCards} 一一对应（契约见《数字大屏_甲_后端统计接口》第 4 节 C1）。
- * 所有计数用 {@code Long}，字节数也用 {@code Long}，避免前端大数精度问题。</p>
+ * <p>口径说明：</p>
+ * <ul>
+ *   <li>{@code totalUsers} / {@code enabledUsers}：{@code sys_user} 全量 / {@code status = 1}；
+ *       该表没有逻辑删除字段，不要额外加 {@code deleted = 0}。</li>
+ *   <li>{@code todayLogins} / {@code todayLoginFailures}：今日 {@code sys_login_log}
+ *       成功 / 失败条数，时间范围按 Asia/Shanghai 的 [今日 00:00, 明日 00:00)。</li>
+ *   <li>{@code files} / {@code storageBytes}：{@code file_object} 中 {@code deleted = 0} 的文件数与字节总数。</li>
+ *   <li>{@code documents} / {@code failedDocuments}：{@code kb_document} 总数 / {@code status = 'FAILED'} 数。</li>
+ *   <li>{@code conversations}：{@code chat_conversation} 中 {@code deleted = 0} 的会话数。</li>
+ *   <li>{@code chatMessages} / {@code todayChatMessages}：{@code chat_message} 总数 / 今日条数。</li>
+ * </ul>
+ *
+ * <p>所有计数使用 {@link Long}，字节数同样使用 {@link Long}，前端按 number 接收。</p>
  */
 @Data
 public class DashboardCardsVO {
 
-    /** 用户总数（逻辑删除不计）。 */
     private Long totalUsers;
-
-    /** 启用状态用户数。 */
     private Long enabledUsers;
-
-    /** 今日成功登录数。 */
     private Long todayLogins;
-
-    /** 今日失败登录数。 */
     private Long todayLoginFailures;
-
-    /** 文件对象总数（逻辑删除不计）。 */
     private Long files;
-
-    /** 文件占用字节总数，空表为 0 而不是 null。 */
     private Long storageBytes;
-
-    /** 知识文档总数。 */
     private Long documents;
-
-    /** 解析失败的知识文档数。 */
     private Long failedDocuments;
-
-    /** 会话总数。 */
     private Long conversations;
-
-    /** 消息总数。 */
     private Long chatMessages;
-
-    /** 今日消息数。 */
     private Long todayChatMessages;
-
-    /** 空数据卡片：所有计数为 0，用于统计接口未接入时的安全降级。 */
-    public static DashboardCardsVO empty() {
-        DashboardCardsVO cards = new DashboardCardsVO();
-        cards.setTotalUsers(0L);
-        cards.setEnabledUsers(0L);
-        cards.setTodayLogins(0L);
-        cards.setTodayLoginFailures(0L);
-        cards.setFiles(0L);
-        cards.setStorageBytes(0L);
-        cards.setDocuments(0L);
-        cards.setFailedDocuments(0L);
-        cards.setConversations(0L);
-        cards.setChatMessages(0L);
-        cards.setTodayChatMessages(0L);
-        return cards;
-    }
 }
