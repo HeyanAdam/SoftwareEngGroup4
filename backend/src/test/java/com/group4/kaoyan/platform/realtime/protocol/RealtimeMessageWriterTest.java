@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -59,5 +60,19 @@ class RealtimeMessageWriterTest {
         assertEquals(4500, data.path("code").asInt());
         assertEquals("回答流中断", data.path("reason").asText());
         assertTrue(data.path("retryable").asBoolean());
+    }
+
+    @Test
+    void chatStreamEventKeepsStreamEnvelope() throws Exception {
+        JsonNode root = objectMapper.readTree(writer.toJson(
+                "delta", "request-3", "stream-3", 2L, "2026-11-22T18:00:00+08:00",
+                Map.of("content", "继续")));
+
+        assertEquals("delta", root.path("type").asText());
+        assertEquals("request-3", root.path("requestId").asText());
+        assertEquals("stream-3", root.path("streamId").asText());
+        assertEquals(2, root.path("sequence").asInt());
+        assertEquals("2026-11-22T18:00:00+08:00", root.path("serverTime").asText());
+        assertEquals("继续", root.path("data").path("content").asText());
     }
 }

@@ -27,7 +27,8 @@ public class RealtimeDeliveryService implements RealtimeDeliveryPort {
         if (userId == null || message == null) {
             return 0;
         }
-        String payload = writer.toJson(message.type(), message.requestId(), message.data());
+        String payload = writer.toJson(message.type(), message.requestId(), message.streamId(),
+                message.sequence(), message.serverTime(), message.data());
         int delivered = 0;
         for (RealtimeConnection connection : registry.connectionsOf(userId)) {
             if (RealtimeSessionSender.send(connection.session(), payload)) {
@@ -48,7 +49,8 @@ public class RealtimeDeliveryService implements RealtimeDeliveryPort {
         if (connection == null) {
             return false;
         }
-        String payload = writer.toJson(message.type(), message.requestId(), message.data());
+        String payload = writer.toJson(message.type(), message.requestId(), message.streamId(),
+                message.sequence(), message.serverTime(), message.data());
         if (RealtimeSessionSender.send(connection.session(), payload)) {
             return true;
         }

@@ -90,8 +90,24 @@ class RealtimeMessageParserTest {
     @DisplayName("chat.send 缺 content：4400")
     void chatSendWithoutContentShouldFail() {
         RealtimeProtocolException ex = assertThrows(RealtimeProtocolException.class,
-                () -> parser.parse("{\"version\":1,\"type\":\"chat.send\",\"requestId\":\"r\",\"data\":{}}"));
+                () -> parser.parse("""
+                        {"version":1,"type":"chat.send","requestId":"r","clientMessageId":"c",
+                         "data":{}}
+                        """));
         assertEquals(RealtimeErrorCode.BAD_MESSAGE, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("chat.send 缺 clientMessageId：4400")
+    void chatSendWithoutClientMessageIdShouldFail() {
+        RealtimeProtocolException ex = assertThrows(RealtimeProtocolException.class,
+                () -> parser.parse("""
+                        {"version":1,"type":"chat.send","requestId":"r",
+                         "data":{"content":"hello"}}
+                        """));
+
+        assertEquals(RealtimeErrorCode.BAD_MESSAGE, ex.getErrorCode());
+        assertNotNull(ex.getMessage());
     }
 
     @Test
@@ -99,7 +115,8 @@ class RealtimeMessageParserTest {
     void chatSendTooLongShouldFail() {
         properties.setMaxTextLength(5);
         assertThrows(RealtimeProtocolException.class, () -> parser.parse("""
-                {"version":1,"type":"chat.send","requestId":"r","data":{"content":"123456"}}
+                {"version":1,"type":"chat.send","requestId":"r","clientMessageId":"c",
+                 "data":{"content":"123456"}}
                 """));
     }
 
@@ -107,7 +124,8 @@ class RealtimeMessageParserTest {
     @DisplayName("conversationId 不是整数：4400")
     void chatSendWithNonIntegerConversationIdShouldFail() {
         assertThrows(RealtimeProtocolException.class, () -> parser.parse("""
-                {"version":1,"type":"chat.send","requestId":"r","data":{"conversationId":"abc","content":"hi"}}
+                {"version":1,"type":"chat.send","requestId":"r","clientMessageId":"c",
+                 "data":{"conversationId":"abc","content":"hi"}}
                 """));
     }
 }

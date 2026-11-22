@@ -67,7 +67,7 @@ public class RealtimeMessageParser {
         JsonNode data = root.get("data");
 
         if (RealtimeProtocol.TYPE_CHAT_SEND.equals(type)) {
-            validateChatSend(data);
+            validateChatSend(data, clientMessageId);
         }
 
         return new RealtimeEnvelope(version, type, requestId, clientMessageId, data);
@@ -117,7 +117,11 @@ public class RealtimeMessageParser {
      * chat.send 的必填字段校验。
      * 会话/知识库 ID 允许为空（新会话就是 null），但一旦给了就必须是整数。
      */
-    private void validateChatSend(JsonNode data) {
+    private void validateChatSend(JsonNode data, String clientMessageId) {
+        if (clientMessageId == null || clientMessageId.isBlank()) {
+            throw new RealtimeProtocolException(RealtimeErrorCode.BAD_MESSAGE,
+                    "chat.send 缺少 clientMessageId 字段");
+        }
         if (data == null || !data.isObject()) {
             throw new RealtimeProtocolException(RealtimeErrorCode.BAD_MESSAGE, "chat.send 缺少 data 对象");
         }

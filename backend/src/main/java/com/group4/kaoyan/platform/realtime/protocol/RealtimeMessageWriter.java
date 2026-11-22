@@ -21,11 +21,30 @@ public class RealtimeMessageWriter {
 
     /** 任意业务事件（B-2 的 ack/meta/delta/done 也走这里）。 */
     public String toJson(String type, String requestId, Object data) {
+        return toJson(type, requestId, null, null, null, data);
+    }
+
+    /** 出站消息：聊天流事件可同时携带 streamId/sequence/serverTime。 */
+    public String toJson(String type,
+                         String requestId,
+                         String streamId,
+                         Long sequence,
+                         String serverTime,
+                         Object data) {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("version", RealtimeProtocol.VERSION);
         root.put("type", type);
         if (requestId != null) {
             root.put("requestId", requestId);
+        }
+        if (streamId != null) {
+            root.put("streamId", streamId);
+        }
+        if (sequence != null) {
+            root.put("sequence", sequence);
+        }
+        if (serverTime != null) {
+            root.put("serverTime", serverTime);
         }
         root.put("data", data == null ? Map.of() : data);
         try {
