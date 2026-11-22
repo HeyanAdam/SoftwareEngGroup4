@@ -25,6 +25,9 @@ public final class RealtimeProtocol {
     /** 发一条聊天消息（B-2 实现业务处理，B-1 只做协议校验）。 */
     public static final String TYPE_CHAT_SEND = "chat.send";
 
+    /** 用户主动停止一个正在生成的回答。 */
+    public static final String TYPE_CHAT_CANCEL = "chat.cancel";
+
     // ==================== 服务端 → 客户端 ====================
 
     /** 心跳应答。 */

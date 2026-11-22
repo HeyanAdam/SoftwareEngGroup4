@@ -11,6 +11,7 @@
 | 能力 | 实现 |
 | --- | --- |
 | `chat.send` 处理 | `ChatRealtimeCommandHandler` |
+| `chat.cancel` 处理 | 终止活跃流并广播 `done(cancelled)` |
 | 每次消息鉴权 | 账号状态、角色快照、`chat:send` 权限重新校验 |
 | 会话归属 | 交给 `ChatService#getOrCreate` 与 `ChatStreamService` 统一校验 |
 | ACK | 先回发起连接，包含会话、流和客户端消息 ID |
@@ -105,6 +106,48 @@ ACK：
 
 区分方式：带 `streamId` 的 `error` 属于 A-1 聊天流；不带 `streamId` 的 `error` 属于连接层。
 
+## 三、主动取消
+
+请求：
+
+```json
+{
+  "version": 1,
+  "type": "chat.cancel",
+  "requestId": "cancel-request-uuid",
+  "data": {
+    "streamId": "stream-uuid"
+  }
+}
+```
+
+服务端只允许流所有者取消。取消成功后会：
+
+1. 终止当前模型流订阅。
+2. 保留已经生成的回答片段。
+3. 将回答状态写为 `CANCELLED`。
+4. 将状态写入 Redis 补发元数据。
+5. 向用户全部在线连接广播最终事件：
+
+```json
+{
+  "version": 1,
+  "type": "done",
+  "requestId": "原 chat.send 的 requestId",
+  "streamId": "stream-uuid",
+  "sequence": 9,
+  "serverTime": "2026-11-22T21:00:00+08:00",
+  "data": {
+    "messageId": 1001,
+    "model": "deepseek-chat",
+    "finishReason": "cancelled",
+    "partialChars": 128
+  }
+}
+```
+
+重复取消已结束的流时，服务端幂等返回 `done`，不会再次修改回答。
+
 ## 四、配置
 
 ```yaml
@@ -139,6 +182,9 @@ mvn test
 
 - ACK 只回发起连接。
 - `meta/delta` 通过用户级推送端口广播。
+- `chat.cancel` 停止活跃生成并广播 `done(finishReason=cancelled)`。
+- 非所有者不能取消他人的流。
+- 重复取消已结束的流幂等返回。
 - 超频请求在调用 AI 核心前被拒绝。
 - 禁用账号不能发送。
 - 单连接和单用户并发上限。

@@ -6,10 +6,13 @@ import com.group4.kaoyan.common.security.PermissionConstants;
 import com.group4.kaoyan.common.security.RbacSnapshotCache;
 import com.group4.kaoyan.common.security.RoleConstants;
 import com.group4.kaoyan.modules.chat.entity.ChatConversation;
+import com.group4.kaoyan.modules.chat.entity.ChatMessage;
 import com.group4.kaoyan.modules.chat.service.ChatService;
 import com.group4.kaoyan.modules.chat.stream.AiRequestContext;
+import com.group4.kaoyan.modules.chat.stream.PersistentChatLifecycle;
 import com.group4.kaoyan.modules.chat.stream.ChatStreamEvent;
 import com.group4.kaoyan.modules.chat.stream.ChatStreamService;
+import com.group4.kaoyan.modules.chat.stream.ChatStreamStore;
 import com.group4.kaoyan.platform.realtime.command.RealtimeCommandContext;
 import com.group4.kaoyan.platform.realtime.command.RealtimeCommandHandler;
 import com.group4.kaoyan.platform.realtime.config.RealtimeProperties;
@@ -43,6 +46,7 @@ public class ChatRealtimeCommandHandler implements RealtimeCommandHandler {
 
     private final ChatStreamService chatStreamService;
     private final ChatService chatService;
+    private final ChatStreamStore chatStreamStore;
     private final RbacSnapshotCache rbacSnapshotCache;
     private final AccountStatusGuard accountStatusGuard;
     private final RealtimeChatRateLimiter rateLimiter;
@@ -51,12 +55,18 @@ public class ChatRealtimeCommandHandler implements RealtimeCommandHandler {
 
     @Override
     public Set<String> supportedTypes() {
-        return Set.of(RealtimeProtocol.TYPE_CHAT_SEND);
+        return Set.of(RealtimeProtocol.TYPE_CHAT_SEND, RealtimeProtocol.TYPE_CHAT_CANCEL);
     }
 
     @Override
     public void handle(RealtimeCommandContext context, RealtimeEnvelope envelope) {
-        Schedulers.boundedElastic().schedule(() -> process(context, envelope));
+        Schedulers.boundedElastic().schedule(() -> {
+            if (RealtimeProtocol.TYPE_CHAT_CANCEL.equals(envelope.type())) {
+                processCancel(context, envelope);
+            } else {
+                process(context, envelope);
+            }
+        });
     }
 
     private void process(RealtimeCommandContext context, RealtimeEnvelope envelope) {
@@ -116,7 +126,9 @@ public class ChatRealtimeCommandHandler implements RealtimeCommandHandler {
                     streamId,
                     clientMessageId);
 
-            chatStreamService.stream(aiContext, content)
+            PersistentChatLifecycle lifecycle = new PersistentChatLifecycle(
+                    chatService, chatStreamStore, context.userId());
+            chatStreamService.stream(aiContext, content, lifecycle)
                     .subscribeOn(Schedulers.boundedElastic())
                     .subscribe(
                             event -> broadcast(context, event),
@@ -134,6 +146,48 @@ public class ChatRealtimeCommandHandler implements RealtimeCommandHandler {
             log.error("WebSocket 聊天启动失败 requestId={}", requestId, e);
             context.replyError(RealtimeErrorCode.INTERNAL_ERROR, requestId, "聊天服务暂时不可用");
         }
+    }
+
+    private void processCancel(RealtimeCommandContext context, RealtimeEnvelope envelope) {
+        String requestId = envelope.requestId();
+        try {
+            accountStatusGuard.ensureActive(context.userId());
+            RbacSnapshotCache.Snapshot snapshot = rbacSnapshotCache.get(context.userId());
+            if (!snapshot.permissions().contains(PermissionConstants.CHAT_SEND)) {
+                context.replyError(RealtimeErrorCode.FORBIDDEN, requestId, "缺少 chat:send 权限");
+                return;
+            }
+        } catch (BizException e) {
+            context.replyError(RealtimeErrorCode.FORBIDDEN, requestId, e.getMessage());
+            return;
+        } catch (Exception e) {
+            context.replyError(RealtimeErrorCode.INTERNAL_ERROR, requestId, "取消服务暂时不可用");
+            return;
+        }
+
+        String streamId = envelope.text("streamId");
+        if (chatStreamService.cancel(context.userId(), streamId)) {
+            return;
+        }
+
+        ChatMessage assistant = chatService.findAssistantByStreamId(streamId);
+        if (assistant == null || !context.userId().equals(assistant.getUserId())) {
+            context.replyError(RealtimeErrorCode.FORBIDDEN, requestId, "流不存在或无权取消");
+            return;
+        }
+
+        String finishReason = switch (String.valueOf(assistant.getStatus())) {
+            case ChatMessage.STATUS_CANCELLED -> "cancelled";
+            case ChatMessage.STATUS_FAILED -> "failed";
+            default -> "stop";
+        };
+        Map<String, Object> done = new LinkedHashMap<>();
+        done.put("messageId", assistant.getId());
+        done.put("finishReason", finishReason);
+        done.put("partialChars", assistant.getContent() == null ? 0 : assistant.getContent().length());
+        done.put("lastSequence", assistant.getLastSequence());
+        done.put("alreadyFinished", true);
+        context.reply(RealtimeProtocol.TYPE_DONE, requestId, done);
     }
 
     private void broadcast(RealtimeCommandContext context, ChatStreamEvent event) {

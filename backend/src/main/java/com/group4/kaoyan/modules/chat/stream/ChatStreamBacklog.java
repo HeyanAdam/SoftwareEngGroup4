@@ -15,4 +15,5 @@ public record ChatStreamBacklog(
     public static final String STATUS_STREAMING = "STREAMING";
     public static final String STATUS_COMPLETED = "COMPLETED";
     public static final String STATUS_FAILED = "FAILED";
+    public static final String STATUS_CANCELLED = "CANCELLED";
 }

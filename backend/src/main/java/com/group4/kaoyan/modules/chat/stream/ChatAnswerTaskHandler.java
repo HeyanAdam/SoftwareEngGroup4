@@ -58,7 +58,10 @@ public class ChatAnswerTaskHandler {
         result.put("status", lifecycle.status());
         result.put("lastSequence", lifecycle.lastSequence());
 
-        if (ChatStreamBacklog.STATUS_FAILED.equals(lifecycle.status())) {
+        if (ChatStreamBacklog.STATUS_CANCELLED.equals(lifecycle.status())) {
+            asyncTaskService.cancel(taskId);
+            log.info("AI 回答任务已取消 streamId={}", task.getStreamId());
+        } else if (ChatStreamBacklog.STATUS_FAILED.equals(lifecycle.status())) {
             asyncTaskService.fail(taskId, lifecycle.errorMessage());
             log.warn("AI 回答任务失败 streamId={} error={}", task.getStreamId(), lifecycle.errorMessage());
         } else {

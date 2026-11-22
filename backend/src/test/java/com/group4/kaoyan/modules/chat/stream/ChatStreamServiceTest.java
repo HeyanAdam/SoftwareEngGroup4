@@ -18,6 +18,9 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -46,6 +49,7 @@ class ChatStreamServiceTest {
     private RetrievalService retrievalService;
     private PromptTemplateLoader promptLoader;
     private LlmClient llmClient;
+    private ChatCancellationRegistry cancellationRegistry;
     private ChatStreamService service;
 
     private ChatConversation conversation;
@@ -58,11 +62,12 @@ class ChatStreamServiceTest {
         retrievalService = mock(RetrievalService.class);
         promptLoader = mock(PromptTemplateLoader.class);
         llmClient = mock(LlmClient.class);
+        cancellationRegistry = new ChatCancellationRegistry();
 
         AiProperties props = new AiProperties();
         props.getLlm().setModel("deepseek-chat");
         service = new ChatStreamService(chatService, retrievalService, promptLoader,
-                llmClient, props, new ObjectMapper());
+                llmClient, props, new ObjectMapper(), cancellationRegistry);
 
         conversation = new ChatConversation();
         conversation.setId(10L);
@@ -211,6 +216,43 @@ class ChatStreamServiceTest {
 
         assertEquals(List.of("meta", "references"), head.stream().map(ChatStreamEvent::type).toList());
         verify(chatService, never()).saveAssistantMessage(any(), anyLong(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("服务端取消：停止生成、保存已生成片段并发出 done(cancelled)")
+    void shouldCancelActiveStreamAndEmitCancelledDone() throws Exception {
+        when(retrievalService.retrieve(anyLong(), anyString(), anyBoolean())).thenReturn(List.of());
+        when(llmClient.streamChat(any())).thenReturn(Flux.never());
+        ChatStreamLifecycle lifecycle = mock(ChatStreamLifecycle.class);
+        when(lifecycle.persistAssistant(any(), eq(7L), anyString(), anyString(), anyString(),
+                eq("stream-1"), eq(ChatMessage.STATUS_CANCELLED), eq("用户主动停止生成"), anyLong()))
+                .thenReturn(assistantMessage);
+
+        List<ChatStreamEvent> events = new CopyOnWriteArrayList<>();
+        CountDownLatch completed = new CountDownLatch(1);
+        service.stream(context(false), "问题", lifecycle).subscribe(event -> {
+            events.add(event);
+        }, error -> completed.countDown(), completed::countDown);
+
+        waitForEvents(events, 2);
+        assertEquals(List.of(ChatStreamEvent.TYPE_META, ChatStreamEvent.TYPE_REFERENCES),
+                events.stream().map(ChatStreamEvent::type).toList());
+        assertTrue(service.cancel(7L, "stream-1"));
+        assertTrue(completed.await(2, TimeUnit.SECONDS));
+
+        ChatStreamEvent done = events.get(events.size() - 1);
+        assertEquals(ChatStreamEvent.TYPE_DONE, done.type());
+        assertEquals("cancelled", done.data().get("finishReason"));
+        assertEquals(200L, done.data().get("messageId"));
+        assertEquals(0, done.data().get("partialChars"));
+        assertFalse(service.cancel(8L, "stream-1"));
+    }
+
+    private void waitForEvents(List<ChatStreamEvent> events, int expected) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (events.size() < expected && System.nanoTime() < deadline) {
+            Thread.sleep(10L);
+        }
     }
 
     @Test
