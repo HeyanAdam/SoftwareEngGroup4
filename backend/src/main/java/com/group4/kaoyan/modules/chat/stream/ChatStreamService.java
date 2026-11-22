@@ -46,7 +46,14 @@ public class ChatStreamService {
     private final ObjectMapper objectMapper;
 
     public Flux<ChatStreamEvent> stream(AiRequestContext context, String question) {
-        return Flux.create(sink -> new Session(context, question, sink).start(),
+        return stream(context, question, ChatStreamLifecycle.NOOP);
+    }
+
+    /** 带生命周期扩展点的入口：A-2 消费者用它提前建 STREAMING 消息并写 Redis。 */
+    public Flux<ChatStreamEvent> stream(AiRequestContext context, String question,
+                                        ChatStreamLifecycle lifecycle) {
+        ChatStreamLifecycle effective = lifecycle == null ? ChatStreamLifecycle.NOOP : lifecycle;
+        return Flux.create(sink -> new Session(context, question, sink, effective).start(),
                 FluxSink.OverflowStrategy.BUFFER);
     }
 
@@ -55,6 +62,7 @@ public class ChatStreamService {
         private final AiRequestContext ctx;
         private final String question;
         private final FluxSink<ChatStreamEvent> sink;
+        private final ChatStreamLifecycle lifecycle;
         private final AtomicLong sequence = new AtomicLong(0);
         private final AtomicBoolean finished = new AtomicBoolean(false);
 
@@ -62,14 +70,17 @@ public class ChatStreamService {
         private volatile boolean cancelled;
 
         private ChatConversation conversation;
+        private ChatMessage userMessage;
         private List<RetrievalService.Retrieved> hits = List.of();
         private List<Map<String, Object>> references = List.of();
         private final StringBuilder answer = new StringBuilder();
 
-        private Session(AiRequestContext ctx, String question, FluxSink<ChatStreamEvent> sink) {
+        private Session(AiRequestContext ctx, String question, FluxSink<ChatStreamEvent> sink,
+                        ChatStreamLifecycle lifecycle) {
             this.ctx = ctx;
             this.question = question == null ? null : question.trim();
             this.sink = sink;
+            this.lifecycle = lifecycle;
         }
 
         private void start() {
@@ -82,7 +93,8 @@ public class ChatStreamService {
                 // 用户主动断开：已生成的部分仍然落库，避免刷新后回答凭空消失；
                 // 一个字都没生成的（仅收到 meta/references）不落空回答。
                 if (answer.length() > 0) {
-                    persistAssistantIfPossible(null);
+                    persistAssistantIfPossible(null, "FAILED",
+                            "客户端断开，仅保存已生成片段");
                 }
                 finished.set(true);
             });
@@ -97,7 +109,9 @@ public class ChatStreamService {
                         : chatService.createConversation(ctx.userId(), ctx.kbId(), question);
                 Long kbId = ctx.kbId() != null ? ctx.kbId() : conversation.getKbId();
                 String history = chatService.recentHistory(conversation.getId());
-                ChatMessage userMessage = chatService.saveUserMessage(conversation, ctx.userId(), question);
+                userMessage = chatService.saveUserMessage(conversation, ctx.userId(), question,
+                        ctx.clientMessageId(), ChatMessage.STATUS_COMPLETED);
+                lifecycle.onStarted(conversation, userMessage, ctx.streamId());
 
                 emit(ChatStreamEvent.TYPE_META, ChatStreamEvent.payload(
                         "conversationId", conversation.getId(),
@@ -138,7 +152,7 @@ public class ChatStreamService {
             if (cancelled || !finished.compareAndSet(false, true)) {
                 return;
             }
-            ChatMessage saved = persistAssistantIfPossible(null);
+            ChatMessage saved = persistAssistantIfPossible(null, "COMPLETED", null);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("messageId", saved == null ? null : saved.getId());
             data.put("model", props.getLlm().getModel());
@@ -153,7 +167,7 @@ public class ChatStreamService {
             if (cancelled || !finished.compareAndSet(false, true)) {
                 return;
             }
-            ChatMessage saved = persistAssistantIfPossible(error);
+            ChatMessage saved = persistAssistantIfPossible(error, "FAILED", safeMessage(error));
             String code = errorCodeOf(error);
             boolean retryable = error instanceof LlmStreamException llm && llm.isRetryable();
             String message = safeMessage(error);
@@ -169,13 +183,20 @@ public class ChatStreamService {
             sink.complete();
         }
 
-        private ChatMessage persistAssistantIfPossible(Throwable error) {
+        private ChatMessage persistAssistantIfPossible(Throwable error, String status, String errorMessage) {
             if (conversation == null) {
                 return null;
             }
             try {
+                String referencesJson = toJson(references);
+                ChatMessage fromLifecycle = lifecycle.persistAssistant(conversation, ctx.userId(),
+                        answer.toString(), referencesJson, props.getLlm().getModel(),
+                        ctx.streamId(), status, errorMessage, sequence.get());
+                if (fromLifecycle != null) {
+                    return fromLifecycle;
+                }
                 return chatService.saveAssistantMessage(conversation, ctx.userId(),
-                        answer.toString(), toJson(references), props.getLlm().getModel());
+                        answer.toString(), referencesJson, props.getLlm().getModel());
             } catch (Exception saveError) {
                 log.warn("保存回答失败（不影响流关闭）：{}", saveError.getMessage());
                 return null;
@@ -186,8 +207,14 @@ public class ChatStreamService {
             if (cancelled) {
                 return;
             }
-            sink.next(ChatStreamEvent.of(type, ctx.requestId(), ctx.streamId(),
-                    sequence.incrementAndGet(), data));
+            ChatStreamEvent event = ChatStreamEvent.of(type, ctx.requestId(), ctx.streamId(),
+                    sequence.incrementAndGet(), data);
+            sink.next(event);
+            try {
+                lifecycle.onEvent(event);
+            } catch (Exception e) {
+                log.warn("流式事件旁路处理失败（不影响主流程）：{}", e.getMessage());
+            }
         }
     }
 

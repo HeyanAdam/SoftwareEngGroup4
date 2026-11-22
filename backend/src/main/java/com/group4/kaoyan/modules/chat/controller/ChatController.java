@@ -3,13 +3,17 @@ package com.group4.kaoyan.modules.chat.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.stp.StpUtil;
 import com.group4.kaoyan.common.R;
+import com.group4.kaoyan.common.security.RoleConstants;
 import com.group4.kaoyan.modules.chat.entity.ChatConversation;
 import com.group4.kaoyan.modules.chat.entity.ChatMessage;
 import com.group4.kaoyan.modules.chat.service.ChatService;
 import com.group4.kaoyan.modules.chat.stream.AiRequestContext;
+import com.group4.kaoyan.modules.chat.stream.ChatAsyncService;
 import com.group4.kaoyan.modules.chat.stream.ChatSseAdapter;
+import com.group4.kaoyan.modules.chat.stream.ChatStreamBacklog;
 import com.group4.kaoyan.modules.chat.stream.ChatStreamCommand;
 import com.group4.kaoyan.modules.chat.stream.ChatStreamService;
+import com.group4.kaoyan.modules.chat.stream.ChatStreamStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,6 +23,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -47,6 +52,8 @@ public class ChatController {
     private final ChatService chatService;
     private final ChatStreamService chatStreamService;
     private final ChatSseAdapter chatSseAdapter;
+    private final ChatAsyncService chatAsyncService;
+    private final ChatStreamStore chatStreamStore;
 
     public record ChatReq(Long conversationId, Long kbId, String question, String clientMessageId) {
     }
@@ -76,6 +83,42 @@ public class ChatController {
     @GetMapping("/conversations")
     public R<List<ChatConversation>> conversations() {
         return R.ok(chatService.list(StpUtil.getLoginIdAsLong()));
+    }
+
+    /**
+     * 异步问答（A-2）：同一事务写用户消息 + AI_CHAT 任务 + Outbox，立即返回 streamId。
+     * 前端随后通过 WebSocket 或补发接口消费事件。
+     */
+    @SaCheckPermission("chat:send")
+    @PostMapping("/conversations/{conversationId}/messages/async")
+    public R<ChatAsyncService.ChatSubmission> async(@PathVariable Long conversationId,
+                                                    @RequestBody ChatReq req,
+                                                    @RequestHeader(value = "X-Request-Id", required = false) String requestId) {
+        ChatReq body = req == null ? new ChatReq(null, null, null, null) : req;
+        AiRequestContext context = contextOf(conversationId, body, requestId);
+        return R.ok(chatAsyncService.submit(context, body.question()));
+    }
+
+    /** 兼容旧口径：会话 ID 放请求体。 */
+    @SaCheckPermission("chat:send")
+    @PostMapping("/messages/async")
+    public R<ChatAsyncService.ChatSubmission> asyncLegacy(@RequestBody ChatReq req,
+                                                         @RequestHeader(value = "X-Request-Id", required = false) String requestId) {
+        ChatReq body = req == null ? new ChatReq(null, null, null, null) : req;
+        AiRequestContext context = contextOf(body.conversationId(), body, requestId);
+        return R.ok(chatAsyncService.submit(context, body.question()));
+    }
+
+    /**
+     * 断线补发：返回 {@code lastSequence} 之后的所有事件；已完成的流也能查到尾部 done。
+     */
+    @SaCheckPermission("chat:send")
+    @GetMapping("/streams/{streamId}/events")
+    public R<ChatStreamBacklog> streamEvents(@PathVariable String streamId,
+                                             @RequestParam(value = "lastSequence", defaultValue = "0") long lastSequence) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        boolean admin = StpUtil.hasRole(RoleConstants.SYSTEM_ADMIN);
+        return R.ok(chatStreamStore.backlog(streamId, Math.max(0, lastSequence), userId, admin));
     }
 
     @SaCheckPermission("chat:send")

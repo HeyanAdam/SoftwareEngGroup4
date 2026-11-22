@@ -10,6 +10,7 @@ import com.group4.kaoyan.modules.chat.entity.ChatMessage;
 import com.group4.kaoyan.modules.chat.mapper.ConversationMapper;
 import com.group4.kaoyan.modules.chat.mapper.MessageMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -120,23 +121,139 @@ public class ChatService {
     }
 
     public ChatMessage saveUserMessage(ChatConversation c, Long userId, String question) {
-        return save(c, userId, "user", question, null);
+        return saveUserMessage(c, userId, question, null, ChatMessage.STATUS_COMPLETED);
+    }
+
+    /**
+     * 幂等落用户消息：同一 (conversationId,userId,clientMessageId) 只建一条。
+     * 异步链路首次落库状态为 PENDING，回答完成后由 {@link #markUserMessageCompleted} 收口。
+     */
+    public ChatMessage saveUserMessage(ChatConversation c, Long userId, String question,
+                                       String clientMessageId, String status) {
+        if (clientMessageId != null && !clientMessageId.isBlank()) {
+            ChatMessage existing = findByClientMessageId(c.getId(), userId, clientMessageId);
+            if (existing != null) {
+                return existing;
+            }
+            try {
+                return save(c, userId, "user", question, null, status,
+                        clientMessageId, null, null);
+            } catch (DuplicateKeyException e) {
+                // 并发重复提交：唯一键兜底，回查胜出的那一条
+                ChatMessage winner = findByClientMessageId(c.getId(), userId, clientMessageId);
+                if (winner != null) {
+                    return winner;
+                }
+                throw e;
+            }
+        }
+        return save(c, userId, "user", question, null, status, null, null, null);
+    }
+
+    public ChatMessage findByClientMessageId(Long conversationId, Long userId, String clientMessageId) {
+        if (clientMessageId == null || clientMessageId.isBlank()) {
+            return null;
+        }
+        List<ChatMessage> list = messageMapper.selectList(Wrappers.<ChatMessage>lambdaQuery()
+                .eq(ChatMessage::getConversationId, conversationId)
+                .eq(ChatMessage::getUserId, userId)
+                .eq(ChatMessage::getClientMessageId, clientMessageId)
+                .orderByAsc(ChatMessage::getId)
+                .last("LIMIT 1"));
+        return list.isEmpty() ? null : list.get(0);
+    }
+
+    public ChatMessage findMessage(Long messageId) {
+        return messageMapper.selectById(messageId);
     }
 
     public ChatMessage saveAssistantMessage(ChatConversation c, Long userId,
                                             String content, String referencesJson, String modelName) {
-        return save(c, userId, "assistant", content, referencesJson);
+        return save(c, userId, "assistant", content, referencesJson,
+                ChatMessage.STATUS_COMPLETED, null, null, null);
     }
 
-    private ChatMessage save(ChatConversation c, Long userId, String role, String content, String refs) {
+    /** 异步链路：回答先建 STREAMING 行，客户端/补发查询能立刻看到“生成中”。 */
+    public ChatMessage createAssistantStreaming(ChatConversation c, Long userId,
+                                                String streamId, Long replyToId) {
+        return save(c, userId, "assistant", "", "[]", ChatMessage.STATUS_STREAMING,
+                null, streamId, replyToId);
+    }
+
+    /** 消费者每 N 个事件更新一次内容与游标，崩溃后仍能恢复到最后已落库的位置。 */
+    public void updateAssistantProgress(Long messageId, String content, long lastSequence) {
+        ChatMessage update = new ChatMessage();
+        update.setId(messageId);
+        update.setContent(content);
+        update.setLastSequence(lastSequence);
+        messageMapper.updateById(update);
+    }
+
+    /** 进入终态：COMPLETED / FAILED，写入引用、错误与完成时间。 */
+    public ChatMessage finishAssistant(Long messageId, String content, String referencesJson,
+                                       String status, String errorMessage, long lastSequence) {
+        messageMapper.update(null, Wrappers.<ChatMessage>lambdaUpdate()
+                .eq(ChatMessage::getId, messageId)
+                .set(ChatMessage::getContent, content == null ? "" : content)
+                .set(ChatMessage::getReferencesJson, referencesJson)
+                .set(ChatMessage::getStatus, status)
+                .set(ChatMessage::getErrorMessage, errorMessage)
+                .set(ChatMessage::getLastSequence, lastSequence)
+                .set(ChatMessage::getCompletedAt, LocalDateTime.now()));
+        return messageMapper.selectById(messageId);
+    }
+
+    public void markUserMessageCompleted(Long messageId) {
+        ChatMessage update = new ChatMessage();
+        update.setId(messageId);
+        update.setStatus(ChatMessage.STATUS_COMPLETED);
+        update.setCompletedAt(LocalDateTime.now());
+        messageMapper.updateById(update);
+    }
+
+    /** 同一 streamId 只应有一条回答；重试时复用它，避免重复消息。 */
+    public ChatMessage findAssistantByStreamId(String streamId) {
+        if (streamId == null || streamId.isBlank()) {
+            return null;
+        }
+        List<ChatMessage> list = messageMapper.selectList(Wrappers.<ChatMessage>lambdaQuery()
+                .eq(ChatMessage::getStreamId, streamId)
+                .eq(ChatMessage::getRole, "assistant")
+                .orderByAsc(ChatMessage::getId)
+                .last("LIMIT 1"));
+        return list.isEmpty() ? null : list.get(0);
+    }
+
+    /** MQ 重试前把已有回答重置回 STREAMING，序号从 1 重新累计。 */
+    public ChatMessage resetAssistantStreaming(Long messageId) {
+        messageMapper.update(null, Wrappers.<ChatMessage>lambdaUpdate()
+                .eq(ChatMessage::getId, messageId)
+                .set(ChatMessage::getStatus, ChatMessage.STATUS_STREAMING)
+                .set(ChatMessage::getContent, "")
+                .set(ChatMessage::getLastSequence, 0L)
+                .set(ChatMessage::getErrorMessage, null)
+                .set(ChatMessage::getCompletedAt, null));
+        return messageMapper.selectById(messageId);
+    }
+
+    private ChatMessage save(ChatConversation c, Long userId, String role, String content, String refs,
+                             String status, String clientMessageId, String streamId, Long replyToId) {
         ChatMessage m = new ChatMessage();
         m.setConversationId(c.getId());
         m.setUserId(userId);
         m.setRole(role);
-        m.setContent(content);
+        m.setContent(content == null ? "" : content);
         m.setReferencesJson(refs);
         m.setModelName(props.getLlm().getModel());
+        m.setClientMessageId(clientMessageId);
+        m.setStreamId(streamId);
+        m.setReplyToId(replyToId);
+        m.setStatus(status == null ? ChatMessage.STATUS_COMPLETED : status);
+        m.setLastSequence(0L);
         m.setCreateTime(LocalDateTime.now());
+        if (ChatMessage.STATUS_COMPLETED.equals(m.getStatus())) {
+            m.setCompletedAt(LocalDateTime.now());
+        }
         messageMapper.insert(m);
         return m;
     }
