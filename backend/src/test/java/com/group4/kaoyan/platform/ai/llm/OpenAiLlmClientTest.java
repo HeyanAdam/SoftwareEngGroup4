@@ -5,6 +5,11 @@ import com.group4.kaoyan.common.config.AiProperties;
 import io.netty.handler.timeout.ReadTimeoutException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+
+import java.net.URI;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -47,6 +52,19 @@ class OpenAiLlmClientTest {
     @DisplayName("读超时映射为可重试的 LLM_TIMEOUT")
     void shouldMapReadTimeout() {
         LlmStreamException ex = client().translate(ReadTimeoutException.INSTANCE);
+
+        assertEquals(LlmStreamException.TIMEOUT, ex.getCode());
+        assertTrue(ex.isRetryable());
+    }
+
+    @Test
+    @DisplayName("WebClient 包装的读超时仍映射为 LLM_TIMEOUT")
+    void shouldMapWrappedReadTimeout() {
+        WebClientRequestException wrapped = new WebClientRequestException(
+                ReadTimeoutException.INSTANCE, HttpMethod.POST,
+                URI.create("http://127.0.0.1:1/v1/chat/completions"), new HttpHeaders());
+
+        LlmStreamException ex = client().translate(wrapped);
 
         assertEquals(LlmStreamException.TIMEOUT, ex.getCode());
         assertTrue(ex.isRetryable());
