@@ -28,6 +28,11 @@ export interface ClientEnvelope<TData> {
   data: TData
 }
 
+/** 停止生成（B-2 已支持 chat.cancel，服务端回 done{finishReason:"cancelled"}） */
+export interface ChatCancelCommand extends ClientEnvelope<{ streamId: string }> {
+  type: 'chat.cancel'
+}
+
 export interface PingCommand extends ClientEnvelope<Record<string, never>> {
   type: 'ping'
 }
@@ -131,7 +136,7 @@ export interface DeltaData {
 
 /**
  * done：`done` 本身就代表正常完成，`finishReason: "stop"` 是正常结束值（不要再造 "completed"）。
- * `"length"` 表示被截断，前端只当参考；`"cancelled"` / `"failed"` 等 B 补取消能力后再用。
+ * `"length"` 表示被截断，前端只当参考；`"cancelled"` 为用户主动停止。B-2 的 chat.cancel 已上线。
  * 注意 done 里的 token 字段当前是 0 占位，不能拿来判断截断。
  */
 export interface DoneData {
@@ -140,6 +145,10 @@ export interface DoneData {
   promptTokens?: number
   completionTokens?: number
   finishReason: 'stop' | 'length' | 'cancelled' | 'failed'
+  /** 取消已完成的流时补发：停止前最后应用的事件序号 */
+  lastSequence?: number
+  /** chat.cancel 落在已结束的流上时为 true（B-2 的幂等回执） */
+  alreadyFinished?: boolean
 }
 
 /** 聊天级错误：{code:string, message, retryable, messageId, partialChars}（A-1） */
@@ -280,6 +289,19 @@ export interface ChatWsTicket {
   wsUrl: string
 }
 
+/**
+ * 断线补发响应（A-2）：
+ * GET /api/v1/chat/streams/{streamId}/events?lastSequence=N
+ * 返回 lastSequence 之后的所有事件，按 sequence 升序。
+ */
+export interface ChatStreamBacklog {
+  streamId: string
+  status: 'STREAMING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+  lastSequence: number
+  assistantMessageId: number | null
+  events: ChatServerEvent[]
+}
+
 export interface ChatSendPayload {
   conversationId: number | null
   kbId: number | null
@@ -293,10 +315,21 @@ export interface ChatSendPayload {
  * C-1 注入 mock；C-2 注入真实 WebSocket 客户端，store 与页面无需改动。
  */
 export interface ChatPort {
+  /** 数据来源标识：mock 演示 / 真实实时链路 */
+  kind?: 'mock' | 'realtime'
   listConversations(): Promise<ChatConversationRecord[]>
   listMessages(conversationId: number): Promise<ChatMessageRecord[]>
   deleteConversation(conversationId: number): Promise<void>
-  sendQuestion(payload: ChatSendPayload, onMessage: (message: ServerMessage) => void): Promise<void>
-  /** 停止当前生成（真实链路需 B 提供 chat.cancel，目前只做前端中断） */
+  sendQuestion(payload: ChatSendPayload, onMessage?: (message: ServerMessage) => void): Promise<void>
+  /** 停止当前生成：真实链路发 chat.cancel，mock 直接以 done(cancelled) 收尾 */
   abort(): void
+  /**
+   * 建立长连接（可选）。真实链路用它接收本标签页之外的事件（如另一标签页发起的回答）。
+   * 不实现时 store 退化为只监听 sendQuestion 的回调。
+   */
+  connect?(onMessage: (message: ServerMessage) => void): void
+  /** 订阅连接状态（可选）；返回取消订阅函数 */
+  onStatusChange?(listener: (status: RealtimeStatus) => void): () => void
+  /** 释放连接与定时器（可选） */
+  dispose?(): void
 }

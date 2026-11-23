@@ -17,10 +17,12 @@
 
 import { del, get, post } from '../../shared/api/request'
 import type {
+  ChatCancelCommand,
   ChatConversationRecord,
   ChatMessageRecord,
   ChatSendCommand,
   ChatSendPayload,
+  ChatStreamBacklog,
   ChatWsTicket,
 } from './types'
 
@@ -30,6 +32,8 @@ export const CHAT_PATHS = {
   messages: (conversationId: number): string => `/chat/conversations/${conversationId}/messages`,
   conversation: (conversationId: number): string => `/chat/conversations/${conversationId}`,
   wsTicket: '/chat/ws-ticket',
+  streamEvents: (streamId: string, lastSequence: number): string =>
+    `/chat/streams/${encodeURIComponent(streamId)}/events?lastSequence=${Math.max(0, lastSequence)}`,
 } as const
 
 /** 申请一次性票据（B 冻结：chat:send，TTL 60s，只能消费一次） */
@@ -84,7 +88,22 @@ export function buildChatSendCommand(payload: ChatSendPayload): ChatSendCommand 
 }
 
 /**
- * 停止生成目前只能做前端中断。
- * 当前 main 的 `RealtimeProtocol` 没有 `chat.cancel` 类型（B-2 只处理 chat.send），
- * 发过去会被当作未知类型丢弃，所以这里不构造该消息；C-2 联调前需与 B 确认后再补。
+ * 断线补发（A-2）：拉取 lastSequence 之后的遗漏事件。
+ * 后端越权回 403、流过期回 404，调用方按“该流无法恢复”处理。
  */
+export function fetchChatBacklog(
+  streamId: string,
+  lastSequence: number,
+): Promise<ChatStreamBacklog> {
+  return get<ChatStreamBacklog>(CHAT_PATHS.streamEvents(streamId, lastSequence))
+}
+
+/** 构造 chat.cancel 上行命令（B-2 已支持，服务端回 done(cancelled)） */
+export function buildChatCancelCommand(streamId: string): ChatCancelCommand {
+  return {
+    version: 1,
+    type: 'chat.cancel',
+    requestId: `cancel-${streamId}`,
+    data: { streamId },
+  }
+}

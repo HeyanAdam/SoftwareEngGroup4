@@ -202,6 +202,8 @@ export function createMockChatPort(options: MockChatPortOptions = {}): ChatPort 
   }
 
   return {
+    kind: 'mock',
+
     async listConversations(): Promise<ChatConversationRecord[]> {
       await delay(120)
       return MOCK_CONVERSATIONS.map((item) => ({ ...item }))

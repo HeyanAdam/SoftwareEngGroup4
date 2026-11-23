@@ -18,6 +18,7 @@ import {
   toViewMessage,
 } from '../../features/chat/chat.messages'
 import { createMockChatPort } from '../../features/chat/chat.mock'
+import { isChatEvent } from '../../features/chat/types'
 import type {
   ChatConversationRecord,
   ChatPort,
@@ -29,9 +30,15 @@ import type {
 /** 当前生效的数据端口；C-1 默认 mock，C-2 用 setChatPort 替换 */
 let activePort: ChatPort = createMockChatPort()
 
+/** 端口是否已挂接连接/状态订阅，避免重复 connect */
+let portAttached = false
+
 /** 供 C-2 注入真实客户端，页面与 store 无需改动 */
 export function setChatPort(port: ChatPort): void {
+  if (port === activePort) return
+  activePort.dispose?.()
   activePort = port
+  portAttached = false
 }
 
 /** 测试或调试时读取当前端口 */
@@ -54,6 +61,8 @@ interface ChatState {
   dataMode: 'mock' | 'realtime'
   /** 当前正在生成的助手消息 localId，用于停止生成 */
   activeAssistantLocalId: string | null
+  /** 本次发送的原始问题，用于新会话标题 */
+  pendingContent: string
   /** 本地草稿会话：还没拿到服务端会话 ID（后端无 POST /conversations） */
   isDraftConversation: boolean
 }
@@ -91,13 +100,32 @@ export const useChatStore = defineStore('chat', {
     selectedKbId: null,
     dataMode: 'mock',
     activeAssistantLocalId: null,
+    pendingContent: '',
     isDraftConversation: false,
   }),
 
   actions: {
-    /** 页面初始化：拉会话列表并默认打开第一个会话 */
+    /**
+     * 挂接端口（C-2）：真实链路订阅连接状态与全局事件，
+     * 这样另一标签页发起的回答也能在当前页面流式显示。
+     */
+    attachPort(): void {
+      if (portAttached) return
+      portAttached = true
+      this.dataMode = activePort.kind === 'realtime' ? 'realtime' : 'mock'
+      activePort.onStatusChange?.((status) => {
+        this.status = status
+      })
+      activePort.connect?.((message) => {
+        this.handleServerMessage(message)
+      })
+    },
+
+    /** 页面初始化：先挂接端口，再拉会话列表并默认打开第一个会话 */
     async init(): Promise<void> {
+      this.attachPort()
       await this.loadConversations()
+      if (this.dataMode === 'mock') this.status = 'connected'
       const first = this.conversations[0]
       if (first && this.activeConversationId === null) {
         await this.selectConversation(first.id)
@@ -109,8 +137,8 @@ export const useChatStore = defineStore('chat', {
       this.errorMessage = ''
       try {
         this.conversations = await activePort.listConversations()
-        // C-1 mock 端口视为已连接；C-2 由 realtimeClient 驱动状态
-        this.status = 'connected'
+        // mock 端口视为已连接；真实链路状态由 realtimeClient 驱动
+        if (activePort.kind !== 'realtime') this.status = 'connected'
       } catch (error) {
         this.status = 'disconnected'
         this.errorMessage = error instanceof Error ? error.message : '会话列表加载失败'
@@ -213,6 +241,7 @@ export const useChatStore = defineStore('chat', {
       const assistant = createAssistantMessage()
       this.messages = [...this.messages, assistant]
       this.activeAssistantLocalId = assistant.localId
+      this.pendingContent = userMessage.content
       this.sending = true
       this.errorMessage = ''
 
@@ -224,17 +253,40 @@ export const useChatStore = defineStore('chat', {
       )
 
       try {
-        await activePort.sendQuestion(payload, (message: ServerMessage) => {
-          this.messages = applyServerMessage(this.messages, message)
-          this.syncConversationFromEvent(message, userMessage.content)
-        })
+        // 真实链路已通过 attachPort 全局订阅事件，这里传空回调避免重复应用
+        const onMessage =
+          this.dataMode === 'realtime'
+            ? () => {}
+            : (message: ServerMessage) => this.handleServerMessage(message)
+        await activePort.sendQuestion(payload, onMessage)
       } catch (error) {
         const message = error instanceof Error ? error.message : '发送失败'
         this.messages = markMessageFailed(this.messages, assistant.localId, message)
       } finally {
         this.sending = false
         this.activeAssistantLocalId = null
-        this.syncConversationMeta(userMessage.content)
+        this.syncConversationMeta(this.pendingContent)
+      }
+    },
+
+    /** 所有端口事件的统一入口：更新消息、同步会话、刷新连接态提示 */
+    handleServerMessage(message: ServerMessage): void {
+      // 其他标签页可能在不同会话里提问：带了别的 conversationId 就不污染当前会话
+      if (message.type === 'ack' || message.type === 'meta') {
+        const eventConversationId = message.data.conversationId
+        if (
+          eventConversationId &&
+          this.activeConversationId &&
+          this.activeConversationId > 0 &&
+          this.activeConversationId !== eventConversationId
+        ) {
+          return
+        }
+      }
+      this.messages = applyServerMessage(this.messages, message)
+      this.syncConversationFromEvent(message, this.pendingContent)
+      if (message.type === 'error' && !isChatEvent(message)) {
+        this.errorMessage = message.data.reason || '连接异常'
       }
     },
 
