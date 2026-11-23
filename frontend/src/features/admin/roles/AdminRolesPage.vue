@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AdminPageHeader from '../layout/components/AdminPageHeader.vue'
+import LazyGate from '../perf/LazyGate.vue'
+import { createLazyComponent } from '../perf/lazyComponent'
 import {
   getRolePermissionCodes,
   listPermissions,
@@ -14,7 +16,6 @@ import { ApiError } from '../../../shared/api/request'
 import { useAdminAuthStore } from '../../../app/stores/adminAuth'
 import RoleListPanel from './components/RoleListPanel.vue'
 import PermissionMatrix from './components/PermissionMatrix.vue'
-import RoleFormDialog from './components/RoleFormDialog.vue'
 import {
   isSameSelection,
   permissionCodesToIds,
@@ -41,6 +42,9 @@ const saving = ref(false)
 const dialogVisible = ref(false)
 const dialogMode = ref<'create' | 'edit'>('create')
 const editingRole = ref<AdminRoleSummary | null>(null)
+
+/** 表单弹窗只在点新建/编辑时加载，进入页面不请求该 chunk */
+const roleFormDialog = createLazyComponent(() => import('./components/RoleFormDialog.vue'))
 
 const activeRole = computed(() => roles.value.find((role) => role.id === activeId.value) ?? null)
 const isSystemAdmin = computed(() => isSystemAdminRole(activeRole.value?.roleCode ?? ''))
@@ -161,16 +165,21 @@ function handleSelectionChange(ids: number[]): void {
   selectedIds.value = ids
 }
 
+/** 只读账号不加载表单弹窗，也不打开弹窗 */
 function openCreate(): void {
+  if (!canUpdate.value) return
   dialogMode.value = 'create'
   editingRole.value = null
   dialogVisible.value = true
+  void roleFormDialog.load()
 }
 
 function openEdit(role: AdminRoleSummary): void {
+  if (!canUpdate.value) return
   dialogMode.value = 'edit'
   editingRole.value = role
   dialogVisible.value = true
+  void roleFormDialog.load()
 }
 
 /** 新建成功直接并入列表并选中；编辑成功只更新本地名称与描述 */
@@ -361,8 +370,13 @@ onMounted(() => {
       </aside>
     </div>
 
-    <RoleFormDialog
+    <LazyGate
+      :state="roleFormDialog"
+      :active="dialogVisible"
       v-model="dialogVisible"
+      label="角色表单弹窗"
+      variant="overlay"
+      :height="220"
       :mode="dialogMode"
       :role="editingRole"
       @saved="handleRoleSaved"
