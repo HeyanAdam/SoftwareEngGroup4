@@ -1,0 +1,28 @@
+[
+  {
+    "version": 1,
+    "type": "pong",
+    "requestId": "req-ping-001",
+    "data": {}
+  },
+  {
+    "version": 1,
+    "type": "error",
+    "requestId": "req-send-009",
+    "data": {
+      "code": 40003,
+      "reason": "聊天请求过于频繁",
+      "retryable": true
+    }
+  },
+  {
+    "version": 1,
+    "type": "ack",
+    "requestId": "req-send-001",
+    "data": {
+      "conversationId": 12,
+      "streamId": "stream-6b21a7e0-0001",
+      "clientMessageId": "cmid-8f1c2d34-0001"
+    }
+  }
+]

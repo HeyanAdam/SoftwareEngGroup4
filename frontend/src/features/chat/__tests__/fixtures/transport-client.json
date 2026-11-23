@@ -1,0 +1,19 @@
+[
+  {
+    "version": 1,
+    "type": "ping",
+    "requestId": "req-ping-001",
+    "data": {}
+  },
+  {
+    "version": 1,
+    "type": "chat.send",
+    "requestId": "req-send-001",
+    "clientMessageId": "cmid-8f1c2d34-0001",
+    "data": {
+      "conversationId": 12,
+      "kbId": null,
+      "content": "线性表的链式存储为什么更适合频繁插入？"
+    }
+  }
+]
