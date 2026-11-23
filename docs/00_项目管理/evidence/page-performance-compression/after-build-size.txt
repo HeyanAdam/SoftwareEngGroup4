@@ -1,0 +1,54 @@
+修改后构建结果（Vite 构建期 Gzip + Brotli 预压缩）
+===============================================
+分支：feat/perf-static-compression
+插件：vite-plugin-compression2@2.5.4（devDependencies）
+配置：algorithms = ['gzip', 'brotliCompress']，threshold = 1024 B，deleteOriginalAssets = false
+命令：npm run build   （vue-tsc -b && vite build）
+生成时间：2026-11-23
+
+构建结果：成功，built in 3.33s
+
+产物统计（dist 全量）
+---------------------
+js 文件：32（数量与修改前一致，未被删除）
+css 文件：13（数量与修改前一致，未被删除）
+.gz 文件：36
+.br 文件：36
+原始文件合计（不含 .gz/.br）：2141521 B
+
+原始 js/css 总量：2125978 B（与修改前完全一致，说明原文件未被改动）
+JS 原始：1731872 B → .gz 合计 579189 B → .br 合计 486372 B
+CSS 原始：394106 B → .gz 合计 56241 B → .br 合计 44230 B
+
+整体体积对比（js + css）
+------------------------
+未压缩：2125978 B（2.03 MiB，基准）
+Gzip  ：635430 B，压缩率 70.1%
+Brotli：530602 B，压缩率 75.0%
+
+关键文件明细
+------------
+文件                                   原始 B    .gz B     gzip 压缩率   .br B    brotli 压缩率
+index-Ce9uiu1A.js                      874461    274912    68.6%        223779   74.4%
+AdminDashboardPage-oaLg2nb0.js         503687    169241    66.4%        144040   71.4%
+index-CVU5VGKD.css                     362160     47962    86.8%         37310   89.7%
+message-BlfMjgCS.js                     69985     24410    65.1%         21452   69.3%
+
+压缩率定义：1 - 压缩后大小 / 原始大小
+
+阈值行为
+--------
+45 个 js/css 中，11 个小于 1024 B，未生成压缩文件（符合 threshold 规则）：
+AdminLogsPage-C6h5glHA.css 764、AdminPageHeader-BQxOxzcC.js 667、
+AdminPageHeader-Chbytioh.css 399、AdminPermissionsPage-BHONoioz.css 920、
+auth.api-BK8Blkoj.js 431、DashboardPage-CgGdBh4T.js 414、
+MainLayout-CH_vYcSv.css 467、NotFoundPage-CjNh2Dek.js 279、
+StudyPlanPage-v2XcnqO-.js 312、UnauthorizedPage-BBvH2gGu.js 994、
+validators-igV9OMZj.js 592
+
+另外 favicon.svg、icons.svg 也按阈值生成了 .gz/.br（36 = 34 个达标 js/css + 2 个 svg）。
+
+说明
+----
+本文件只记录构建产物层面的体积变化。浏览器是否收到 Content-Encoding: gzip/br、
+Nginx 是否启用 gzip_static 与缓存，均不在本阶段验收范围内。

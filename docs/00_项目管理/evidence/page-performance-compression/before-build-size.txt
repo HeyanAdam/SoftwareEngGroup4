@@ -1,0 +1,32 @@
+修改前构建基线（静态资源压缩任务）
+=================================
+分支：feat/perf-static-compression
+基线提交：7611400 Merge pull request #44 from HeyanAdam/feat/chat-frontend-realtime
+
+环境：node v22.23.2 / npm 10.9.8 / vite 8.3.6 / vue 3.5.44
+命令：npm ci && npm run build   （build = vue-tsc -b && vite build）
+生成时间：2026-11-23
+
+构建结果：成功，built in 1.80s
+告警：仅 chunk 体积提示（index / AdminDashboardPage > 500 kB），与压缩无关
+
+dist/assets 统计
+----------------
+文件总数：45（js 32，css 13）
+JS 原始总量：1731872 B（1.65 MiB）
+CSS 原始总量：394106 B（0.38 MiB）
+JS + CSS 合计：2125978 B（2.03 MiB）
+
+最大文件
+--------
+index-Ce9uiu1A.js                   874461 B
+AdminDashboardPage-oaLg2nb0.js      503687 B
+index-CVU5VGKD.css                  362160 B
+message-BlfMjgCS.js                  69985 B
+runtime-core.esm-bundler-C-ddFgzV.js 67637 B
+
+预压缩产物
+----------
+已存在 .gz 文件：0
+已存在 .br 文件：0
+结论：当前构建不做任何预压缩，部署后传输体积等于上述原始体积。
