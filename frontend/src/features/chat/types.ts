@@ -240,6 +240,26 @@ export interface ChatMessageRecord {
   createTime: string
 }
 
+/**
+ * 历史消息增量分页查询：
+ * - beforeId 为空返回最近一页；
+ * - limit 默认 20，后端上限 100。
+ */
+export interface ChatHistoryQuery {
+  beforeId?: number | null
+  limit?: number
+}
+
+/**
+ * 历史消息分页结果（后端 `{items, has_more, next_before_id}`）。
+ * items 为时间升序；nextBeforeId 为继续向前翻页的游标。
+ */
+export interface ChatHistoryPage {
+  items: ChatMessageRecord[]
+  hasMore: boolean
+  nextBeforeId: number | null
+}
+
 /* ══════════════════════════════════════════════════════════════
  * 五、页面视图模型
  * ══════════════════════════════════════════════════════════════ */
@@ -318,7 +338,8 @@ export interface ChatPort {
   /** 数据来源标识：mock 演示 / 真实实时链路 */
   kind?: 'mock' | 'realtime'
   listConversations(): Promise<ChatConversationRecord[]>
-  listMessages(conversationId: number): Promise<ChatMessageRecord[]>
+  /** 历史消息按页加载：不传 query 时等价于最近一页 */
+  listMessages(conversationId: number, query?: ChatHistoryQuery): Promise<ChatHistoryPage>
   deleteConversation(conversationId: number): Promise<void>
   sendQuestion(payload: ChatSendPayload, onMessage?: (message: ServerMessage) => void): Promise<void>
   /** 停止当前生成：真实链路发 chat.cancel，mock 直接以 done(cancelled) 收尾 */

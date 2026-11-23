@@ -5,7 +5,6 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.group4.kaoyan.common.R;
 import com.group4.kaoyan.common.security.RoleConstants;
 import com.group4.kaoyan.modules.chat.entity.ChatConversation;
-import com.group4.kaoyan.modules.chat.entity.ChatMessage;
 import com.group4.kaoyan.modules.chat.service.ChatService;
 import com.group4.kaoyan.modules.chat.stream.AiRequestContext;
 import com.group4.kaoyan.modules.chat.stream.ChatAsyncService;
@@ -121,10 +120,23 @@ public class ChatController {
         return R.ok(chatStreamStore.backlog(streamId, Math.max(0, lastSequence), userId, admin));
     }
 
+    /**
+     * 会话历史消息。
+     *
+     * <p>不传分页参数时保持旧行为：返回全部消息数组（兼容既有调用）。
+     * 传了 {@code before_id} 或 {@code limit} 时走增量分页，返回
+     * {@code {items, has_more, next_before_id}}。</p>
+     */
     @SaCheckPermission("chat:send")
     @GetMapping("/conversations/{id}/messages")
-    public R<List<ChatMessage>> messages(@PathVariable Long id) {
-        return R.ok(chatService.messages(StpUtil.getLoginIdAsLong(), id));
+    public R<Object> messages(@PathVariable Long id,
+                              @RequestParam(value = "before_id", required = false) Long beforeId,
+                              @RequestParam(value = "limit", required = false) Integer limit) {
+        Long userId = StpUtil.getLoginIdAsLong();
+        if (beforeId == null && limit == null) {
+            return R.ok(chatService.messages(userId, id));
+        }
+        return R.ok(chatService.messagePage(userId, id, beforeId, limit));
     }
 
     @SaCheckPermission("chat:send")

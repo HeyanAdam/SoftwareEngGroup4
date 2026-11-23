@@ -35,7 +35,33 @@
         :closable="false"
       />
 
-      <div ref="scrollRef" v-loading="chat.loadingMessages" class="chat-page__messages">
+      <div
+        ref="scrollRef"
+        v-loading="chat.loadingMessages"
+        class="chat-page__messages"
+        @scroll.passive="handleScroll"
+      >
+        <div
+          v-if="chat.hasMoreMessages || chat.loadingEarlier || chat.earlierError"
+          class="chat-page__earlier"
+        >
+          <el-button
+            v-if="chat.earlierError"
+            size="small"
+            type="danger"
+            plain
+            @click="loadEarlier"
+          >
+            更早消息加载失败，点击重试
+          </el-button>
+          <span v-else-if="chat.loadingEarlier" class="chat-page__earlier-text">
+            正在加载更早消息…
+          </span>
+          <el-button v-else size="small" text @click="loadEarlier">加载更早消息</el-button>
+        </div>
+        <p v-else-if="chat.messages.length" class="chat-page__earlier-text">
+          没有更早的消息了
+        </p>
         <el-empty
           v-if="!chat.messages.length && !chat.loadingMessages"
           :description="emptyText"
@@ -67,6 +93,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { getChatPort, setChatPort, useChatStore } from '../../app/stores/chat'
 import { TOKEN_STORAGE_KEY } from '../../shared/api/request'
+import { computeRestoredScrollTop } from './chat.history'
 import ChatComposer from './components/ChatComposer.vue'
 import ChatConversationList from './components/ChatConversationList.vue'
 import ChatMessageItem from './components/ChatMessageItem.vue'
@@ -133,8 +160,16 @@ async function scrollToBottom(): Promise<void> {
   if (container) container.scrollTop = container.scrollHeight
 }
 
+/**
+ * 只有「末尾消息」变化时才滚到底部：
+ * 插入更早消息时末尾不变，不会把用户从阅读位置甩到最底部；
+ * 新发送/流式追加时末尾是新的助手消息，仍然自动跟随。
+ */
 watch(
-  () => chat.messages.reduce((total, item) => total + item.content.length, 0),
+  () => {
+    const last = chat.messages[chat.messages.length - 1]
+    return `${last?.localId ?? ''}:${last?.content.length ?? 0}`
+  },
   () => {
     void scrollToBottom()
   },
@@ -146,6 +181,40 @@ watch(
     void scrollToBottom()
   },
 )
+
+/** 触发一次加载更早消息，并在插入后恢复滚动位置 */
+let loadingEarlierLocally = false
+
+async function loadEarlier(): Promise<void> {
+  if (loadingEarlierLocally) return
+  const container = scrollRef.value
+  const previousHeight = container?.scrollHeight ?? 0
+  const previousTop = container?.scrollTop ?? 0
+  loadingEarlierLocally = true
+  try {
+    const added = await chat.loadEarlierMessages()
+    if (!added) return
+    await nextTick()
+    if (container) {
+      container.scrollTop = computeRestoredScrollTop(
+        previousHeight,
+        previousTop,
+        container.scrollHeight,
+      )
+    }
+  } finally {
+    loadingEarlierLocally = false
+  }
+}
+
+/** 滚动接近顶部时自动加载更早消息；同时保留按钮入口，避免自动触发难以验收 */
+function handleScroll(): void {
+  const container = scrollRef.value
+  if (!container) return
+  if (container.scrollTop > 48) return
+  if (!chat.hasMoreMessages || chat.loadingEarlier || chat.earlierError) return
+  void loadEarlier()
+}
 
 function handleSelect(conversationId: number): void {
   void chat.selectConversation(conversationId)
@@ -229,6 +298,19 @@ function handleSend(): void {
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
   background: var(--el-bg-color);
+}
+
+.chat-page__earlier {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 12px;
+}
+
+.chat-page__earlier-text {
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 /* 窄屏：会话列表移到上方，消息区占满 */

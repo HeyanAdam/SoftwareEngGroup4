@@ -19,6 +19,8 @@ import { del, get, post } from '../../shared/api/request'
 import type {
   ChatCancelCommand,
   ChatConversationRecord,
+  ChatHistoryPage,
+  ChatHistoryQuery,
   ChatMessageRecord,
   ChatSendCommand,
   ChatSendPayload,
@@ -49,6 +51,49 @@ export function fetchConversations(): Promise<ChatConversationRecord[]> {
 /** 会话历史消息；referencesJson 是字符串，调用方需 parseReferences */
 export function fetchHistoryMessages(conversationId: number): Promise<ChatMessageRecord[]> {
   return get<ChatMessageRecord[]>(CHAT_PATHS.messages(conversationId))
+}
+
+/**
+ * 会话历史消息增量分页：`?before_id=&limit=`。
+ * 不传 beforeId 返回最近一页；返回顺序为时间升序。
+ *
+ * 后端字段是 snake_case（`has_more` / `next_before_id`），
+ * 这里统一收敛为前端内部 camelCase；同时兼容旧服务端「直接返回数组」的响应。
+ */
+export async function fetchHistoryMessagePage(
+  conversationId: number,
+  query: ChatHistoryQuery = {},
+): Promise<ChatHistoryPage> {
+  const raw = await get<ChatHistoryPageWire | ChatMessageRecord[]>(
+    CHAT_PATHS.messages(conversationId),
+    {
+      params: {
+        before_id: query.beforeId ?? undefined,
+        limit: query.limit ?? undefined,
+      },
+    },
+  )
+  if (Array.isArray(raw)) {
+    return {
+      items: raw,
+      hasMore: false,
+      nextBeforeId: raw.length ? raw[0].id : null,
+    }
+  }
+  const items = Array.isArray(raw?.items) ? raw.items : []
+  return {
+    items,
+    hasMore: raw?.has_more ?? raw?.hasMore ?? false,
+    nextBeforeId: raw?.next_before_id ?? raw?.nextBeforeId ?? (items.length ? items[0].id : null),
+  }
+}
+
+interface ChatHistoryPageWire {
+  items?: ChatMessageRecord[]
+  has_more?: boolean
+  hasMore?: boolean
+  next_before_id?: number | null
+  nextBeforeId?: number | null
 }
 
 /** 删除会话（逻辑删除，后端置 deleted） */

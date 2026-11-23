@@ -250,5 +250,23 @@ window.addEventListener(UNAUTHORIZED_EVENT, (event) => {
   void router.replace({ name: 'Login', query: { redirect: current.fullPath } })
 })
 
+/**
+ * 路由级代码加载失败兜底：发布新版本后旧 chunk 404 时，
+ * 用户会停在空白页。这里识别「动态导入失败」并在短时间内只刷新一次，避免死循环。
+ */
+const CHUNK_RELOAD_KEY = 'app:chunk-reload-at'
+
+router.onError((error) => {
+  const message = error instanceof Error ? error.message : String(error)
+  const isChunkError = /dynamically imported module|Importing a module script failed|Loading chunk/i.test(
+    message,
+  )
+  if (!isChunkError) return
+  const lastReloadAt = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) ?? 0)
+  if (Date.now() - lastReloadAt < 10_000) return
+  sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()))
+  window.location.reload()
+})
+
 export default router
 export { routes }

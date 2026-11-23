@@ -17,6 +17,8 @@ import type {
   ChatConversationRecord,
   ChatEvent,
   ChatEventType,
+  ChatHistoryPage,
+  ChatHistoryQuery,
   ChatMessageRecord,
   ChatPort,
   ChatSendPayload,
@@ -209,9 +211,21 @@ export function createMockChatPort(options: MockChatPortOptions = {}): ChatPort 
       return MOCK_CONVERSATIONS.map((item) => ({ ...item }))
     },
 
-    async listMessages(conversationId: number): Promise<ChatMessageRecord[]> {
+    async listMessages(
+      conversationId: number,
+      query: ChatHistoryQuery = {},
+    ): Promise<ChatHistoryPage> {
       await delay(120)
-      return (MOCK_HISTORY[conversationId] ?? []).map((item) => ({ ...item }))
+      const all = (MOCK_HISTORY[conversationId] ?? []).slice().sort((a, b) => a.id - b.id)
+      const limit = Math.max(1, Math.min(query.limit ?? 20, 100))
+      const beforeId = query.beforeId ?? null
+      const eligible = beforeId === null ? all : all.filter((item) => item.id < beforeId)
+      const items = eligible.slice(Math.max(0, eligible.length - limit)).map((item) => ({ ...item }))
+      return {
+        items,
+        hasMore: eligible.length > items.length,
+        nextBeforeId: items.length ? items[0].id : null,
+      }
     },
 
     async deleteConversation(_conversationId: number): Promise<void> {

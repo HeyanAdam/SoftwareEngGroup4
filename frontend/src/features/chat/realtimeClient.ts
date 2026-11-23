@@ -19,7 +19,7 @@ import {
   deleteConversation,
   fetchChatBacklog,
   fetchConversations,
-  fetchHistoryMessages,
+  fetchHistoryMessagePage,
   fetchWsTicket,
 } from './chat.api'
 import { createIndexedDbOfflineQueue, type OfflineQueue } from './offlineQueue'
@@ -442,8 +442,8 @@ export function createRealtimeChatClient(options: RealtimeClientOptions = {}): C
       return fetchConversations()
     },
 
-    listMessages(conversationId: number) {
-      return fetchHistoryMessages(conversationId)
+    listMessages(conversationId: number, query = {}) {
+      return fetchHistoryMessagePage(conversationId, query)
     },
 
     deleteConversation(conversationId: number) {

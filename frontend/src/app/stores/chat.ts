@@ -8,6 +8,7 @@
 
 import { defineStore } from 'pinia'
 import { buildSendPayload } from '../../features/chat/chat.api'
+import { HISTORY_PAGE_SIZE, mergeEarlierMessages } from '../../features/chat/chat.history'
 import {
   applyServerMessage,
   createAssistantMessage,
@@ -65,6 +66,16 @@ interface ChatState {
   pendingContent: string
   /** 本地草稿会话：还没拿到服务端会话 ID（后端无 POST /conversations） */
   isDraftConversation: boolean
+  /** 当前会话是否还有更早消息 */
+  hasMoreMessages: boolean
+  /** 正在加载更早消息 */
+  loadingEarlier: boolean
+  /** 加载更早消息失败的原因（非空时展示重试入口） */
+  earlierError: string
+  /** 继续向前翻页的游标（当前列表最早一条的服务端 ID） */
+  nextBeforeId: number | null
+  /** 历史加载代次：切换会话或新建会话时自增，过期响应直接丢弃 */
+  messageLoadToken: number
 }
 
 /** 会话标题：新会话用首个问题截断生成 */
@@ -102,6 +113,11 @@ export const useChatStore = defineStore('chat', {
     activeAssistantLocalId: null,
     pendingContent: '',
     isDraftConversation: false,
+    hasMoreMessages: false,
+    loadingEarlier: false,
+    earlierError: '',
+    nextBeforeId: null,
+    messageLoadToken: 0,
   }),
 
   actions: {
@@ -147,21 +163,79 @@ export const useChatStore = defineStore('chat', {
       }
     },
 
-    /** 切换会话：清空消息后加载历史 */
+    /**
+     * 切换会话：清空消息后只加载最近一页。
+     * 通过 messageLoadToken 标记代次，慢响应回到旧会话时直接丢弃，避免串写。
+     */
     async selectConversation(conversationId: number): Promise<void> {
       if (this.activeConversationId === conversationId && this.messages.length > 0) return
+      const token = this.messageLoadToken + 1
+      this.messageLoadToken = token
       this.activeConversationId = conversationId
       this.isDraftConversation = false
       this.loadingMessages = true
       this.errorMessage = ''
+      this.messages = []
+      this.hasMoreMessages = false
+      this.loadingEarlier = false
+      this.earlierError = ''
+      this.nextBeforeId = null
       try {
-        const history = await activePort.listMessages(conversationId)
-        this.messages = history.map(toViewMessage)
+        const page = await activePort.listMessages(conversationId, { limit: HISTORY_PAGE_SIZE })
+        if (token !== this.messageLoadToken) return
+        this.messages = page.items.map(toViewMessage)
+        this.hasMoreMessages = page.hasMore
+        this.nextBeforeId = page.nextBeforeId
       } catch (error) {
+        if (token !== this.messageLoadToken) return
         this.messages = []
+        this.hasMoreMessages = false
+        this.nextBeforeId = null
         this.errorMessage = error instanceof Error ? error.message : '历史消息加载失败'
       } finally {
-        this.loadingMessages = false
+        if (token === this.messageLoadToken) this.loadingMessages = false
+      }
+    },
+
+    /**
+     * 加载更早一页：以 nextBeforeId 为游标向前翻。
+     * 返回是否真的插入了新消息（页面据此决定是否恢复滚动位置）。
+     * 并发、切换会话、没有更多数据时都不会重复请求。
+     */
+    async loadEarlierMessages(): Promise<boolean> {
+      const conversationId = this.activeConversationId
+      const beforeId = this.nextBeforeId
+      if (this.loadingEarlier || this.loadingMessages) return false
+      if (!this.hasMoreMessages) return false
+      if (!conversationId || conversationId <= 0 || beforeId == null) return false
+
+      const token = this.messageLoadToken
+      this.loadingEarlier = true
+      this.earlierError = ''
+      try {
+        const page = await activePort.listMessages(conversationId, {
+          beforeId,
+          limit: HISTORY_PAGE_SIZE,
+        })
+        if (token !== this.messageLoadToken || this.activeConversationId !== conversationId) {
+          return false
+        }
+        const merged = mergeEarlierMessages(this.messages, page.items.map(toViewMessage))
+        const added = merged !== this.messages
+        this.messages = merged
+        this.hasMoreMessages = page.hasMore
+        // 游标只允许向前（变小），防止重复/乱序响应把游标推回去
+        if (page.nextBeforeId != null && page.nextBeforeId < beforeId) {
+          this.nextBeforeId = page.nextBeforeId
+        }
+        return added
+      } catch (error) {
+        if (token === this.messageLoadToken) {
+          this.earlierError = error instanceof Error ? error.message : '更早消息加载失败'
+        }
+        return false
+      } finally {
+        if (token === this.messageLoadToken) this.loadingEarlier = false
       }
     },
 
@@ -171,10 +245,15 @@ export const useChatStore = defineStore('chat', {
      */
     startNewConversation(): void {
       if (this.sending) return
+      this.messageLoadToken += 1
       this.activeConversationId = null
       this.isDraftConversation = true
       this.messages = []
       this.errorMessage = ''
+      this.hasMoreMessages = false
+      this.loadingEarlier = false
+      this.earlierError = ''
+      this.nextBeforeId = null
     },
 
     /** 删除会话：先删远端，再从本地列表移除 */
@@ -186,8 +265,13 @@ export const useChatStore = defineStore('chat', {
       }
       this.conversations = this.conversations.filter((item) => item.id !== conversationId)
       if (this.activeConversationId === conversationId) {
+        this.messageLoadToken += 1
         this.activeConversationId = null
         this.messages = []
+        this.hasMoreMessages = false
+        this.loadingEarlier = false
+        this.earlierError = ''
+        this.nextBeforeId = null
         const next = this.conversations[0]
         if (next) await this.selectConversation(next.id)
       }

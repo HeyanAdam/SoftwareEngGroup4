@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -30,6 +31,11 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ChatService {
+
+    /** 历史分页默认页大小。 */
+    public static final int DEFAULT_HISTORY_PAGE_SIZE = 20;
+    /** 历史分页单次最大条数，防止客户端一次拉全量。 */
+    public static final int MAX_HISTORY_PAGE_SIZE = 100;
 
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
@@ -83,11 +89,48 @@ public class ChatService {
                 .orderByDesc(ChatConversation::getId));
     }
 
+    /**
+     * 旧口径：一次返回全部消息（升序）。保留给未传分页参数的调用，行为不变。
+     */
     public List<ChatMessage> messages(Long userId, Long conversationId) {
         requireOwned(userId, conversationId);
         return messageMapper.selectList(Wrappers.<ChatMessage>lambdaQuery()
                 .eq(ChatMessage::getConversationId, conversationId)
                 .orderByAsc(ChatMessage::getId));
+    }
+
+    /**
+     * 增量分页：返回 {@code beforeId} 之前（不含）最近一页消息。
+     *
+     * <p>规则与《成员 1 操作文档》6.2 一致：</p>
+     * <ul>
+     *   <li>{@code beforeId} 为空返回最近一页；</li>
+     *   <li>{@code limit} 默认 {@value #DEFAULT_HISTORY_PAGE_SIZE}，上限 {@value #MAX_HISTORY_PAGE_SIZE}；</li>
+     *   <li>按 ID 倒序多查一条判断是否还有更早消息，返回前恢复为时间升序。</li>
+     * </ul>
+     */
+    public ChatHistoryPage messagePage(Long userId, Long conversationId, Long beforeId, Integer limit) {
+        requireOwned(userId, conversationId);
+        int size = normalizeHistoryLimit(limit);
+        List<ChatMessage> desc = messageMapper.selectList(Wrappers.<ChatMessage>lambdaQuery()
+                .eq(ChatMessage::getConversationId, conversationId)
+                .lt(beforeId != null, ChatMessage::getId, beforeId)
+                .orderByDesc(ChatMessage::getId)
+                .last("LIMIT " + (size + 1)));
+        boolean hasMore = desc.size() > size;
+        if (hasMore) {
+            desc = new ArrayList<>(desc.subList(0, size));
+        }
+        Collections.reverse(desc);
+        Long nextBeforeId = desc.isEmpty() ? null : desc.get(0).getId();
+        return new ChatHistoryPage(desc, hasMore, nextBeforeId);
+    }
+
+    int normalizeHistoryLimit(Integer limit) {
+        if (limit == null || limit < 1) {
+            return DEFAULT_HISTORY_PAGE_SIZE;
+        }
+        return Math.min(limit, MAX_HISTORY_PAGE_SIZE);
     }
 
     public void delete(Long userId, Long conversationId) {
