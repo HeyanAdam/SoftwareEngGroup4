@@ -2,7 +2,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import AdminPageHeader from '../layout/components/AdminPageHeader.vue'
-import AssignRoleDrawer from './components/AssignRoleDrawer.vue'
+import LazyGate from '../perf/LazyGate.vue'
+import { createLazyComponent } from '../perf/lazyComponent'
 import { listRoles, listUsers, updateUserStatus } from '../api/admin.api'
 import type { AdminRole, AdminUserVO } from '../api/types'
 import { useAdminAuthStore } from '../../../app/stores/adminAuth'
@@ -26,6 +27,9 @@ const statusLoading = reactive<Record<number, boolean>>({})
 
 const drawerVisible = ref(false)
 const activeUser = ref<AdminUserVO | null>(null)
+
+/** 角色抽屉只在需要时加载；首屏不发该 chunk 请求 */
+const roleDrawer = createLazyComponent(() => import('./components/AssignRoleDrawer.vue'))
 
 /** 分页 + 筛选拉取用户列表 */
 async function loadUsers(): Promise<void> {
@@ -103,9 +107,18 @@ async function beforeStatusChange(row: AdminUserVO): Promise<boolean> {
   }
 }
 
+/** 只读账号没有修改权限：不加载抽屉组件，也不打开抽屉 */
 function openRoleDrawer(row: AdminUserVO): void {
+  if (!canUpdate.value) return
   activeUser.value = row
   drawerVisible.value = true
+  void roleDrawer.load()
+}
+
+/** 悬停 / 键盘聚焦按钮时预加载，点击仍保留完整加载流程；失败不影响点击后重试 */
+function preloadRoleDrawer(): void {
+  if (!canUpdate.value) return
+  roleDrawer.preload()
 }
 
 /** 抽屉保存成功后刷新该行角色标签，并把新角色并入角色字典 */
@@ -204,6 +217,8 @@ onMounted(() => {
             link
             type="primary"
             @click="openRoleDrawer(row)"
+            @mouseenter="preloadRoleDrawer"
+            @focus="preloadRoleDrawer"
           >
             分配角色
           </el-button>
@@ -228,8 +243,13 @@ onMounted(() => {
       />
     </div>
 
-    <AssignRoleDrawer
+    <LazyGate
+      :state="roleDrawer"
+      :active="drawerVisible"
       v-model="drawerVisible"
+      label="角色分配抽屉"
+      variant="overlay"
+      :height="200"
       :user="activeUser"
       @saved="handleRolesSaved"
     />

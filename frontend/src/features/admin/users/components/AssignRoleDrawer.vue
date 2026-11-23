@@ -52,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiError } from '../../../../shared/api/request'
 import { getUserRoles, listRoles, updateUserRoles } from '../../api/admin.api'
@@ -83,7 +83,8 @@ const boundIds = computed(() => boundRoles.value.map((role) => role.id))
 
 /** 打开抽屉：并行拉全部角色与该用户当前绑定，已绑定项预勾选 */
 async function handleOpen(): Promise<void> {
-  if (!props.user) return
+  // 抽屉改为按需加载后，可能挂载时 modelValue 已是 true；@open 与 onMounted 都可能触发，这里去重
+  if (!props.user || loading.value) return
   loading.value = true
   try {
     const [allRoles, current] = await Promise.all([
@@ -121,6 +122,14 @@ async function handleSave(): Promise<void> {
     saving.value = false
   }
 }
+
+/**
+ * 组件事先不挂载，首次挂载往往就是「已经打开」的状态，
+ * 此时 el-drawer 的 @open 不保证触发，这里补一次数据加载（handleOpen 内已去重）。
+ */
+onMounted(() => {
+  if (props.modelValue) void handleOpen()
+})
 </script>
 
 <style scoped>
