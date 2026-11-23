@@ -1,0 +1,8 @@
+# 修改后（feat/perf-component-lazy）构建产物
+# 目标组件已拆出独立 chunk；js 体积取自 vite build 输出
+AdminDashboardPage-Bn4611Hz.js  9316 B
+AdminRolesPage-CXXB0Icg.js  13129 B
+AdminUsersPage-BHHfCudj.js  6612 B
+AssignRoleDrawer-BfCccIg5.js  3093 B
+DashboardTrendChart-BIoTI0Hy.js  495233 B
+RoleFormDialog-C3KcIGDv.js  3550 B
