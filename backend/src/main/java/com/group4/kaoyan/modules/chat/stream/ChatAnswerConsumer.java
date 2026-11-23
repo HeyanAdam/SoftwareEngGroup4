@@ -74,7 +74,8 @@ public class ChatAnswerConsumer {
                     task == null ? null : task.getStreamId(), messageId, reason, e);
             consumeLogService.fail(begin.logId(), reason);
             int retry = begin.retryCount() + 1;
-            if (retry < MAX_RETRY) {
+            // 当前是第 retry 次尝试：初次 + MAX_RETRY 次重投后才进死信
+            if (retry <= MAX_RETRY) {
                 asyncTaskService.retryOrFailByChat(userMessageId, reason);
                 try {
                     requeueWithDelay(task, messageId);

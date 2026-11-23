@@ -32,6 +32,7 @@ public class PersistentChatLifecycle implements ChatStreamLifecycle {
     private int eventCount;
     private String finalStatus = ChatStreamBacklog.STATUS_STREAMING;
     private String finalError;
+    private boolean finalRetryable;
 
     @Override
     public void onStarted(ChatConversation conversation, ChatMessage userMessage, String streamId) {
@@ -64,6 +65,9 @@ public class PersistentChatLifecycle implements ChatStreamLifecycle {
         } else if (ChatStreamEvent.TYPE_ERROR.equals(event.type())) {
             finalStatus = ChatStreamBacklog.STATUS_FAILED;
             finalError = String.valueOf(event.data().getOrDefault("message", "生成失败"));
+            Object retryable = event.data().get("retryable");
+            finalRetryable = Boolean.TRUE.equals(retryable)
+                    || "true".equalsIgnoreCase(String.valueOf(retryable));
             maybeFlushProgress(true);
         } else if (ChatStreamEvent.TYPE_DONE.equals(event.type())) {
             finalStatus = ChatStreamBacklog.STATUS_COMPLETED;
@@ -101,6 +105,11 @@ public class PersistentChatLifecycle implements ChatStreamLifecycle {
 
     public String errorMessage() {
         return finalError;
+    }
+
+    /** 最近一次 error 事件是否声明可重试；供 MQ 消费者决定重投还是直接收口 */
+    public boolean retryable() {
+        return finalRetryable;
     }
 
     public long lastSequence() {
