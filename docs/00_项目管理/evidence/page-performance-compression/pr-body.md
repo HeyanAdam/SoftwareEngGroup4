@@ -1,13 +1,8 @@
-# PR: perf(frontend): 增加 Vite 静态资源预压缩
-
-> 分支：`feat/perf-static-compression` → `main`
->
-> 提交：`46d9807`（构建压缩）、`aba58dc`（体积证据）、本文件所在提交（浏览器验收与 PR 正文）
->
-> 对应 Issue：未创建（本机 gh CLI 不可用，且按协作口径只推送分支、不建 PR/不合并）
-> 协作跟踪：待补
-
 ## 目标
+
+对应 Issue：#46
+分支：`feat/perf-static-compression` → `main`
+提交：`46d9807`（构建压缩）、`aba58dc`（体积证据）、`0f92145`（浏览器验收与 PR 正文）
 
 为前端 JavaScript、CSS 等文本构建产物生成 Gzip 与 Brotli 预压缩文件，减少部署后传输体积；原始文件保留，构建产物仍可直接使用。本 PR 只做 Vite 构建期压缩，Nginx 静态托管、缓存与响应头验收留给下一阶段。
 
@@ -57,4 +52,4 @@
 
 ## 提交拆分说明
 
-文档建议拆为 4 个提交（gzip / brotli / test / docs）。实际为 2 个：gzip 与 brotli 由同一处配置同时启用，拆分会导致一次配置被回退再重写，故合并为 `46d9807`；未新增压缩产物的自动化校验脚本，`test(perf)` 提交据实未做，产物检查以 PowerShell 与浏览器验收证据替代。
+文档建议拆为 4 个提交（gzip / brotli / test / docs）。实际为 3 个：gzip 与 brotli 由同一处配置同时启用，拆分会导致一次配置被回退再重写，故合并进 `46d9807`；`test(perf)` 提交为浏览器级验收与构建输出留档，未包含独立的产物校验脚本。
