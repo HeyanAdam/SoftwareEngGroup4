@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -105,6 +107,18 @@ class PersistentChatLifecycleTest {
 
         assertEquals("FAILED", lifecycle.status());
         assertEquals("模型超时", lifecycle.errorMessage());
+        assertFalse(lifecycle.retryable());
         verify(store).markStatus("stream-1", "FAILED", 2L, "模型超时");
+    }
+
+    @Test
+    @DisplayName("error 事件 retryable=true 时暴露给消费者用于延迟重投")
+    void shouldExposeRetryableError() {
+        lifecycle.onStarted(conversation, userMessage, "stream-1");
+        lifecycle.onEvent(ChatStreamEvent.of("error", "req", "stream-1", 2,
+                Map.of("code", "LLM_UPSTREAM_ERROR", "message", "上游 500", "retryable", true)));
+
+        assertEquals("FAILED", lifecycle.status());
+        assertTrue(lifecycle.retryable());
     }
 }

@@ -62,10 +62,25 @@ public class ChatAnswerTaskHandler {
             asyncTaskService.cancel(taskId);
             log.info("AI 回答任务已取消 streamId={}", task.getStreamId());
         } else if (ChatStreamBacklog.STATUS_FAILED.equals(lifecycle.status())) {
+            // 流内部的 LLM 上游错误不会抛异常；若 error 事件声明可重试，必须显式抛出，
+            // 让 ChatAnswerConsumer 走延迟重试队列，否则会被误判为消费成功并直接 ack。
+            if (lifecycle.retryable()) {
+                log.warn("AI 回答任务可重试失败，交由消费者重投 streamId={} error={}",
+                        task.getStreamId(), lifecycle.errorMessage());
+                throw new RetryableChatException(lifecycle.errorMessage());
+            }
             asyncTaskService.fail(taskId, lifecycle.errorMessage());
-            log.warn("AI 回答任务失败 streamId={} error={}", task.getStreamId(), lifecycle.errorMessage());
+            log.warn("AI 回答任务失败（不可重试）streamId={} error={}",
+                    task.getStreamId(), lifecycle.errorMessage());
         } else {
             asyncTaskService.succeed(taskId, result);
+        }
+    }
+
+    /** 标记“可重试失败”，由 MQ 消费者负责延迟重投与最终死信。 */
+    public static class RetryableChatException extends RuntimeException {
+        public RetryableChatException(String message) {
+            super(message);
         }
     }
 }
