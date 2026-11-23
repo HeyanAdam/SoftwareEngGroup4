@@ -65,10 +65,12 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useChatStore } from '../../app/stores/chat'
+import { getChatPort, setChatPort, useChatStore } from '../../app/stores/chat'
+import { TOKEN_STORAGE_KEY } from '../../shared/api/request'
 import ChatComposer from './components/ChatComposer.vue'
 import ChatConversationList from './components/ChatConversationList.vue'
 import ChatMessageItem from './components/ChatMessageItem.vue'
+import { createRealtimeChatClient } from './realtimeClient'
 import type { ChatViewMessage } from './types'
 
 const chat = useChatStore()
@@ -77,6 +79,10 @@ const draft = ref('')
 const scrollRef = ref<HTMLDivElement | null>(null)
 
 onMounted(() => {
+  // 已登录走真实链路；未登录（如直接打开演示页）继续用 C-1 的 mock
+  if (localStorage.getItem(TOKEN_STORAGE_KEY) && getChatPort().kind !== 'realtime') {
+    setChatPort(createRealtimeChatClient())
+  }
   void chat.init()
 })
 
