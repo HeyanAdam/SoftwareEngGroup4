@@ -37,19 +37,28 @@
     </section>
 
     <section class="dashboard-page__charts" v-loading="loading && !summary">
-      <DashboardTrendChart
+      <LazyGate
+        :state="trendChart"
+        label="登录趋势图表"
+        :height="336"
         title="登录趋势"
         :dates="trend.dates"
         :values="trend.logins"
         color="#409eff"
       />
-      <DashboardTrendChart
+      <LazyGate
+        :state="trendChart"
+        label="文件上传趋势图表"
+        :height="336"
         title="文件上传趋势"
         :dates="trend.dates"
         :values="trend.uploads"
         color="#67c23a"
       />
-      <DashboardTrendChart
+      <LazyGate
+        :state="trendChart"
+        label="聊天消息趋势图表"
+        :height="336"
         title="聊天消息趋势"
         :dates="trend.dates"
         :values="trend.chatMessages"
@@ -71,7 +80,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import DashboardKpiCard from './components/DashboardKpiCard.vue'
-import DashboardTrendChart from './components/DashboardTrendChart.vue'
+import LazyGate from '../perf/LazyGate.vue'
+import { createLazyComponent } from '../perf/lazyComponent'
 import DashboardSystemPanel from './components/DashboardSystemPanel.vue'
 import DashboardQueuePanel from './components/DashboardQueuePanel.vue'
 import DashboardRefreshBar from './components/DashboardRefreshBar.vue'
@@ -91,6 +101,12 @@ import type { AdminDashboardSummary, DashboardDays, KpiItem } from './types'
 
 /** 轮询间隔：15 秒（与后端缓存 TTL 一致） */
 const REFRESH_MS = 15_000
+
+/**
+ * 图表组件含 ECharts，单独拆 chunk。
+ * 图表属于首屏内容，所以挂载后立即加载，不延迟到用户交互。
+ */
+const trendChart = createLazyComponent(() => import('./components/DashboardTrendChart.vue'))
 
 const days = ref<DashboardDays>(7)
 const summary = ref<AdminDashboardSummary | null>(null)
@@ -203,6 +219,7 @@ watch(days, () => {
 })
 
 onMounted(() => {
+  void trendChart.load()
   void refresh()
   startTimer()
   document.addEventListener('visibilitychange', handleVisibilityChange)
