@@ -3,11 +3,13 @@
 分支：feat/perf-static-compression
 基线提交：7611400 Merge pull request #44 from HeyanAdam/feat/chat-frontend-realtime
 
-环境：node v22.23.2 / npm 10.9.8 / vite 8.3.6 / vue 3.5.44
+环境：node v22.23.2 / npm 10.9.8 / vite 8.3.8(lock 实际解析) / vue 3.5.45
 命令：npm ci && npm run build   （build = vue-tsc -b && vite build）
 生成时间：2026-11-23
 
-构建结果：成功，built in 1.80s
+构建结果：成功，built in 1.73s
+完整输出：before-build-output.txt（原文）、before-build-output.png（同内容渲染图）
+复现方式：以 7611400 的 frontend/vite.config.ts（无插件）执行同一条 npm run build
 告警：仅 chunk 体积提示（index / AdminDashboardPage > 500 kB），与压缩无关
 
 dist/assets 统计

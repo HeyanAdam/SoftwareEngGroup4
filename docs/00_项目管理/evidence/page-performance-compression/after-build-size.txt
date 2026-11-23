@@ -6,7 +6,9 @@
 命令：npm run build   （vue-tsc -b && vite build）
 生成时间：2026-11-23
 
-构建结果：成功，built in 3.33s
+环境：node v22.23.2 / npm 10.9.8 / vite 8.3.8 / vue 3.5.45
+构建结果：成功，built in 3.06s
+完整输出：after-build-output.txt（原文）、after-build-output.png（同内容渲染图）
 
 产物统计（dist 全量）
 ---------------------
