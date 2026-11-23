@@ -99,6 +99,12 @@
             <artifactId>sa-token-spring-boot3-starter</artifactId>
             <version>${sa-token.version}</version>
         </dependency>
+        <!-- Sa-Token 登录会话落 Redis：多实例共享、重启后可继续使用 -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-redis-jackson</artifactId>
+            <version>${sa-token.version}</version>
+        </dependency>
 
         <!-- Milvus SDK，排除hadoop、日志依赖 -->
         <dependency>
