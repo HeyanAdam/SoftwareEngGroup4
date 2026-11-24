@@ -45,6 +45,9 @@ export const MAX_BATCH_BYTES = 50 * 1024 * 1024
 /** 单分片最大自动重试次数 */
 export const MAX_PART_RETRIES = 3
 
+/** 全部分片上传后，再向服务端查漏并补传的轮数 */
+export const MAX_PART_RECONCILE_ROUNDS = 1
+
 /** 重试等待：1s / 2s / 4s */
 export const RETRY_DELAYS_MS = [1000, 2000, 4000]
 
@@ -131,6 +134,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
+}
+
+function formatPartNumbers(parts: number[]): string {
+  const shown = parts.slice(0, 12).join(',')
+  return parts.length > 12 ? `${shown} 等 ${parts.length} 片` : shown
 }
 
 // ============ 本地续传记录 ============
@@ -697,12 +705,26 @@ export class UploadEngine {
       return
     }
 
-    const missing = this.missingPartsOf(ctx, session)
+    let missing = this.missingPartsOf(ctx, session)
 
-    if (session.status !== 'COMPLETED' && session.status !== 'MERGING' && missing.length > 0) {
+    // 先补当前已知缺口，再回查服务端确认。一次“请求成功但响应丢失”
+    // 或单片最终失败时，不会直接带着 71/72 去调用 merge。
+    for (let round = 0; round <= MAX_PART_RECONCILE_ROUNDS && missing.length > 0; round++) {
+      if (session.status === 'COMPLETED' || session.status === 'MERGING') break
       t.status = 'UPLOADING'
+      t.error =
+        round === 0
+          ? undefined
+          : `服务端仍缺少分片 ${formatPartNumbers(missing)}，正在补传（${round}/${MAX_PART_RECONCILE_ROUNDS}）`
       this.notify(t)
       await this.uploadParts(ctx, missing)
+
+      if (ctx.cancelled || ctx.paused) break
+
+      // 以服务端落库明细为准，不能只信本地“这个请求返回 200”。
+      session = await this.api.getUploadSession(session.id)
+      this.applySessionProgress(ctx, session)
+      missing = this.missingPartsOf(ctx, session)
     }
 
     if (ctx.cancelled) {
@@ -716,9 +738,18 @@ export class UploadEngine {
       this.notify(t)
       return
     }
+    if (missing.length > 0) {
+      throw new FileApiError({
+        message: `分片仍未全部确认，缺少第 ${formatPartNumbers(missing)} 片，请重试`,
+        code: 409,
+        httpStatus: 409,
+        retriable: true,
+      })
+    }
 
     // 合并（重复 complete 时后端返回同一文件对象）
     t.status = 'MERGING'
+    t.error = undefined
     t.progress = 100
     this.notify(t)
 
@@ -731,11 +762,13 @@ export class UploadEngine {
     if (file) this.options.onCompleted?.(t, file)
   }
 
-  /** 会话进度写回本地任务（后端目前只提供 uploadedCount，明细以本地为准） */
+  /** 会话进度写回本地任务；服务端返回明细时以服务端为准。 */
   private applySessionProgress(ctx: TaskContext, session: UploadSession): void {
-    const uploaded = session.uploadedParts
-    if (Array.isArray(uploaded) && uploaded.length > 0) {
-      for (const part of uploaded) ctx.doneParts.add(part)
+    if (Array.isArray(session.uploadedParts)) {
+      ctx.doneParts = new Set(session.uploadedParts)
+    }
+    if (Array.isArray(session.missingParts)) {
+      for (const part of session.missingParts) ctx.doneParts.delete(part)
     }
     ctx.task.uploadedParts = Array.from(ctx.doneParts).sort((left, right) => left - right)
     this.updateProgress(ctx)
@@ -750,11 +783,13 @@ export class UploadEngine {
     const all: number[] = []
     for (let part = 1; part <= session.partCount; part++) all.push(part)
 
-    if (Array.isArray(session.missingParts) && session.missingParts.length > 0) {
-      return session.missingParts.filter((part) => !ctx.doneParts.has(part))
+    // 空数组也是有效答案，表示服务端确认已经收齐；不能当成“字段缺失”。
+    if (Array.isArray(session.missingParts)) {
+      return [...new Set(session.missingParts)].sort((left, right) => left - right)
     }
-    if (Array.isArray(session.uploadedParts) && session.uploadedParts.length > 0) {
-      return all.filter((part) => !session.uploadedParts?.includes(part))
+    if (Array.isArray(session.uploadedParts)) {
+      const uploaded = new Set(session.uploadedParts)
+      return all.filter((part) => !uploaded.has(part))
     }
     return all.filter((part) => !ctx.doneParts.has(part))
   }
@@ -762,27 +797,56 @@ export class UploadEngine {
   /** 并发上传分片，每个 worker 循环取队列 */
   private async uploadParts(ctx: TaskContext, missing: number[]): Promise<void> {
     const queue = [...missing]
+    const failedParts = new Set<number>()
     const workers = Math.min(this.maxConcurrency, Math.max(1, queue.length))
     const tasks: Promise<void>[] = []
     for (let index = 0; index < workers; index++) {
-      tasks.push(this.partWorker(ctx, queue))
+      tasks.push(this.partWorker(ctx, queue, failedParts))
     }
-    await Promise.all(tasks)
+    await Promise.allSettled(tasks)
+    if (this.halted) {
+      throw new FileApiError({ message: '登录已失效，请重新登录', httpStatus: 401 })
+    }
+    if (failedParts.size > 0) {
+      ctx.task.error = `以下分片重试后仍失败：${formatPartNumbers(
+        [...failedParts].sort((left, right) => left - right),
+      )}，正在向服务端核对`
+      this.notify(ctx.task)
+    }
   }
 
-  private async partWorker(ctx: TaskContext, queue: number[]): Promise<void> {
+  private async partWorker(
+    ctx: TaskContext,
+    queue: number[],
+    failedParts: Set<number>,
+  ): Promise<void> {
     while (queue.length > 0) {
       if (ctx.cancelled || ctx.paused) return
       if (this.halted) throw new FileApiError({ message: '登录已失效，请重新登录', httpStatus: 401 })
       const partNumber = queue.shift()
       if (partNumber === undefined) return
       if (ctx.doneParts.has(partNumber)) continue
-      await this.uploadOnePart(ctx, partNumber)
-      ctx.doneParts.add(partNumber)
-      ctx.task.uploadedParts = Array.from(ctx.doneParts).sort((left, right) => left - right)
-      this.updateProgress(ctx)
-      this.persist(ctx)
-      this.notify(ctx.task)
+      try {
+        await this.uploadOnePart(ctx, partNumber)
+        ctx.doneParts.add(partNumber)
+        ctx.task.uploadedParts = Array.from(ctx.doneParts).sort((left, right) => left - right)
+        this.updateProgress(ctx)
+        this.persist(ctx)
+        this.notify(ctx.task)
+      } catch (error) {
+        if (ctx.cancelled || ctx.paused) return
+        const apiError = error instanceof FileApiError ? error : null
+        if (apiError?.httpStatus === 401 || apiError?.httpStatus === 403) {
+          this.halted = apiError.httpStatus === 401
+          throw error
+        }
+        // 单片失败不终止其他 worker；等全部结束后回查服务端，只补真正的缺片。
+        failedParts.add(partNumber)
+        ctx.task.error = `分片 ${partNumber} 上传失败：${
+          error instanceof Error ? error.message : '未知错误'
+        }`
+        this.notify(ctx.task)
+      }
     }
   }
 

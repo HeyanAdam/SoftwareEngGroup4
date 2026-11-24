@@ -17,6 +17,9 @@ public interface UploadPartMapper {
 
     List<FileUploadPart> selectBySession(@Param("sessionId") Long sessionId);
 
+    /** 已确认落库的分片序号，用于断点续传和合并前查漏。 */
+    List<Integer> selectUploadedNumbers(@Param("sessionId") Long sessionId);
+
     int countUploaded(@Param("sessionId") Long sessionId);
 
     int deleteBySession(@Param("sessionId") Long sessionId);

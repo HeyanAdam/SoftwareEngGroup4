@@ -4,6 +4,7 @@ import com.group4.kaoyan.common.mybatis.TimedEntity;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 大文件上传会话（file_upload_session）。
@@ -28,6 +29,10 @@ public class FileUploadSession implements TimedEntity {
     private Integer partSize;
     private Integer partCount;
     private Integer uploadedCount;
+    /** 已确认落库的分片序号，仅用于接口响应，不映射数据库列。 */
+    private List<Integer> uploadedParts;
+    /** 尚未确认落库的分片序号，仅用于接口响应，不映射数据库列。 */
+    private List<Integer> missingParts;
     private String bucketName;
     private String objectKey;
     private String status;
