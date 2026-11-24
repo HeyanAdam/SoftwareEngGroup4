@@ -99,6 +99,12 @@
             <artifactId>sa-token-spring-boot3-starter</artifactId>
             <version>${sa-token.version}</version>
         </dependency>
+        <!-- Sa-Token 登录会话落 Redis：多实例共享、重启后可继续使用 -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-redis-jackson</artifactId>
+            <version>${sa-token.version}</version>
+        </dependency>
 
         <!-- Milvus SDK，排除hadoop、日志依赖 -->
         <dependency>
@@ -119,6 +125,13 @@
                     <artifactId>slf4j-reload4j</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+
+        <!-- MinIO 对象存储：显式声明，避免依赖 Milvus SDK 的传递版本 -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>${minio.version}</version>
         </dependency>
 
         <!-- PDFBox：重点！排除传递进来的 commons-logging -->

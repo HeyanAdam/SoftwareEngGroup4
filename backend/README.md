@@ -10,8 +10,8 @@ Spring Boot 3 + MyBatis-Plus + Sa-Token(RBAC) + Milvus + MinIO + 模型 API（Op
 | Java 17 / Spring Boot 3.2.5 | Web、Validation、WebFlux(WebClient 流式) |
 | MyBatis-Plus 3.5.7 | 单表 CRUD 与分页 |
 | MySQL 8 | 业务数据 + 文档解析后全文 |
-| Redis 7 | 预留缓存/会话（当前主要给 Sa-Token 扩展用） |
-| Sa-Token 1.38 | 登录态与 RBAC 注解鉴权 |
+| Redis 7 | Sa-Token 登录会话、验证码、限流、WebSocket 票据、大屏缓存和聊天恢复流 |
+| Sa-Token 1.38 | Redis 会话持久化与 RBAC 注解鉴权 |
 | Milvus 2.4 | 向量检索（COLLECTION `doc_chunk`，COSINE + HNSW） |
 | MinIO | 原始上传文件（PDF/DOCX/TXT） |
 | 模型 API | 对话 `/chat/completions`、向量 `/embeddings`，模型名可配 |
