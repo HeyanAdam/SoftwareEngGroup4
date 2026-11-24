@@ -51,7 +51,7 @@ class AdminServiceTest {
         when(roleMapper.selectRoleCodesByUserId(9L)).thenReturn(List.of(RoleConstants.SYSTEM_ADMIN));
         when(roleMapper.countUsersWithRoleCode(RoleConstants.SYSTEM_ADMIN)).thenReturn(1L);
 
-        BizException e = assertThrows(BizException.class, () -> service.unbindRole(9L, 1L));
+        BizException e = assertThrows(BizException.class, () -> service.unbindRole(8L, 9L, 1L));
         assertTrue(e.getMessage().contains("唯一的系统管理员"));
     }
 
@@ -63,7 +63,7 @@ class AdminServiceTest {
         when(roleMapper.selectRoleCodesByUserId(9L)).thenReturn(List.of(RoleConstants.SYSTEM_ADMIN));
         when(roleMapper.countUsersWithRoleCode(RoleConstants.SYSTEM_ADMIN)).thenReturn(2L);
 
-        service.unbindRole(9L, 1L);
+        service.unbindRole(8L, 9L, 1L);
     }
 
     @Test
@@ -77,8 +77,24 @@ class AdminServiceTest {
         when(roleMapper.countUsersWithRoleCode(RoleConstants.SYSTEM_ADMIN)).thenReturn(1L);
 
         BizException e = assertThrows(BizException.class,
-                () -> service.assignRoles(9L, List.of(2L)));
+                () -> service.assignRoles(8L, 9L, List.of(2L)));
         assertTrue(e.getMessage().contains("唯一的系统管理员"));
+    }
+
+    @Test
+    @DisplayName("当前操作者不能移除自己的系统管理员角色")
+    void cannotRemoveOwnAdminRole() {
+        SysUser user = new SysUser();
+        user.setId(9L);
+        user.setUsername("admin01");
+        when(userMapper.selectById(9L)).thenReturn(user);
+        when(roleMapper.selectRoleCodesByUserId(9L)).thenReturn(List.of(RoleConstants.SYSTEM_ADMIN));
+        when(roleMapper.selectById(2L)).thenReturn(role(2L, RoleConstants.STUDENT));
+        when(roleMapper.countUsersWithRoleCode(RoleConstants.SYSTEM_ADMIN)).thenReturn(2L);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.assignRoles(9L, 9L, List.of(2L)));
+        assertTrue(e.getMessage().contains("不能移除自己的系统管理员角色"));
     }
 
     @Test

@@ -121,15 +121,20 @@ public class AdminService {
     }
 
     @Transactional
-    public void assignRoles(Long userId, List<Long> roleIds) {
+    public void assignRoles(Long operatorId, Long userId, List<Long> roleIds) {
         if (userMapper.selectById(userId) == null) {
             throw new BizException("用户不存在");
         }
-        // 兜底：不能把系统里最后一个管理员降权，否则谁都没法再进后台
         boolean targetIsAdmin = roleMapper.selectRoleCodesByUserId(userId).contains(ROLE_ADMIN);
         boolean keepAdmin = roleIds != null && roleIds.stream()
                 .map(roleMapper::selectById)
                 .anyMatch(r -> r != null && ROLE_ADMIN.equals(r.getRoleCode()));
+        // 覆盖式保存很容易漏勾管理员角色。禁止当前操作者给自己降权，
+        // 避免保存成功后当前 token 立刻失去后台权限，页面只剩 403。
+        if (userId.equals(operatorId) && targetIsAdmin && !keepAdmin) {
+            throw new BizException("不能移除自己的系统管理员角色；请让另一位系统管理员操作");
+        }
+        // 兜底：不能把系统里最后一个管理员降权，否则谁都没法再进后台
         if (targetIsAdmin && !keepAdmin && roleMapper.countUsersWithRoleCode(ROLE_ADMIN) <= 1) {
             throw new BizException("这是当前唯一的系统管理员，不能降权；请先把其他用户提权");
         }
@@ -259,12 +264,17 @@ public class AdminService {
      * <p>兜底：如果这是系统里最后一个管理员，拒绝解绑，否则没人能再进后台。</p>
      */
     @Transactional
-    public void unbindRole(Long userId, Long roleId) {
+    public void unbindRole(Long operatorId, Long userId, Long roleId) {
         SysRole role = roleMapper.selectById(roleId);
         if (role == null) {
             throw new BizException("角色不存在");
         }
         boolean targetIsAdmin = roleMapper.selectRoleCodesByUserId(userId).contains(ROLE_ADMIN);
+        if (ROLE_ADMIN.equals(role.getRoleCode())
+                && userId.equals(operatorId)
+                && targetIsAdmin) {
+            throw new BizException("不能解除自己的系统管理员角色；请让另一位系统管理员操作");
+        }
         if (ROLE_ADMIN.equals(role.getRoleCode())
                 && targetIsAdmin
                 && roleMapper.countUsersWithRoleCode(ROLE_ADMIN) <= 1) {

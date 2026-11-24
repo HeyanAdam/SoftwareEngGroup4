@@ -1,6 +1,7 @@
 package com.group4.kaoyan.modules.admin.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.stp.StpUtil;
 import com.group4.kaoyan.common.R;
 import com.group4.kaoyan.modules.admin.dto.AdminUserVO;
 import com.group4.kaoyan.modules.admin.service.AdminService;
@@ -80,7 +81,7 @@ public class AdminController {
     @AuditLog(module = "admin", action = "ASSIGN_ROLES", resourceType = "USER")
     @PutMapping("/users/{id}/roles")
     public R<Void> assignRoles(@PathVariable Long id, @RequestBody IdsReq req) {
-        adminService.assignRoles(id, req.ids());
+        adminService.assignRoles(StpUtil.getLoginIdAsLong(), id, req.ids());
         return R.ok();
     }
 
@@ -123,7 +124,7 @@ public class AdminController {
     @AuditLog(module = "admin", action = "UNBIND_ROLE", resourceType = "USER")
     @DeleteMapping("/users/{userId}/roles/{roleId}")
     public R<Void> unbindRole(@PathVariable Long userId, @PathVariable Long roleId) {
-        adminService.unbindRole(userId, roleId);
+        adminService.unbindRole(StpUtil.getLoginIdAsLong(), userId, roleId);
         return R.ok();
     }
 
