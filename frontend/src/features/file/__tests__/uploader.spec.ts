@@ -11,6 +11,7 @@ import type { FileApiPort, FileObject, FileScene, UploadSession } from '../types
 import {
   DEFAULT_PART_SIZE,
   MAX_BATCH_FILES,
+  MAX_PART_RETRIES,
   RESUME_STORAGE_KEY,
   SMALL_FILE_MAX_SIZE,
   UploadEngine,
@@ -45,6 +46,7 @@ interface FakeApiStats {
   uploadBatch: File[][]
   initSession: number
   uploadParts: number[]
+  uploadPartAttempts: number[]
   complete: number
   cancel: number[]
   maxActiveParts: number
@@ -58,6 +60,10 @@ interface FakeApiOptions {
   transientPartFailures?: number
   /** 分片上传耗时，用于观察并发与取消窗口 */
   partDelayMs?: number
+  /** 指定分片前 N 次请求失败；用于验证查漏后的补传 */
+  partFailuresByNumber?: Record<number, number>
+  /** 会话初始化时模拟服务端已经收到的分片 */
+  initialUploadedParts?: number[]
   /** 小文件直传耗时，用于观察取消窗口 */
   smallDelayMs?: number
 }
@@ -67,12 +73,19 @@ function createFakeApi(options: FakeApiOptions = {}): { api: FileApiPort; stats:
   let sessionSeq = 100
   let transientLeft = options.transientPartFailures ?? 0
   let activeParts = 0
+  const failuresByPart = new Map(
+    Object.entries(options.partFailuresByNumber ?? {}).map(([part, count]) => [
+      Number(part),
+      count,
+    ]),
+  )
 
   const stats: FakeApiStats = {
     uploadSmall: 0,
     uploadBatch: [],
     initSession: 0,
     uploadParts: [],
+    uploadPartAttempts: [],
     complete: 0,
     cancel: [],
     maxActiveParts: 0,
@@ -83,6 +96,16 @@ function createFakeApi(options: FakeApiOptions = {}): { api: FileApiPort; stats:
     await new Promise((resolve) => {
       setTimeout(resolve, options.partDelayMs)
     })
+  }
+
+  function refreshParts(session: UploadSession, uploaded: Set<number>): UploadSession {
+    session.uploadedParts = [...uploaded].sort((left, right) => left - right)
+    session.missingParts = Array.from(
+      { length: session.partCount },
+      (_, index) => index + 1,
+    ).filter((part) => !uploaded.has(part))
+    session.uploadedCount = session.uploadedParts.length
+    return { ...session }
   }
 
   const api: FileApiPort = {
@@ -127,6 +150,12 @@ function createFakeApi(options: FakeApiOptions = {}): { api: FileApiPort; stats:
         uploadedParts: [],
         missingParts: [],
       }
+      const uploaded = new Set(
+        (options.initialUploadedParts ?? []).filter(
+          (part) => part >= 1 && part <= session.partCount,
+        ),
+      )
+      refreshParts(session, uploaded)
       sessions.set(session.id, session)
       return { ...session }
     },
@@ -138,9 +167,15 @@ function createFakeApi(options: FakeApiOptions = {}): { api: FileApiPort; stats:
     async uploadPart(sessionId, partNumber) {
       activeParts++
       stats.maxActiveParts = Math.max(stats.maxActiveParts, activeParts)
+      stats.uploadPartAttempts.push(partNumber)
       try {
         if (options.unauthorized) {
           throw new FileApiError({ message: '登录已失效，请重新登录', httpStatus: 401 })
+        }
+        const remainingPartFailures = failuresByPart.get(partNumber) ?? 0
+        if (remainingPartFailures > 0) {
+          failuresByPart.set(partNumber, remainingPartFailures - 1)
+          throw new FileApiError({ message: `分片 ${partNumber} 暂时失败`, httpStatus: 503, retriable: true })
         }
         if (transientLeft > 0) {
           transientLeft--
@@ -149,7 +184,9 @@ function createFakeApi(options: FakeApiOptions = {}): { api: FileApiPort; stats:
         await delay()
         const session = sessions.get(sessionId)
         if (!session) throw new FileApiError({ message: '会话不存在', httpStatus: 404 })
-        session.uploadedCount++
+        const uploaded = new Set(session.uploadedParts ?? [])
+        uploaded.add(partNumber)
+        refreshParts(session, uploaded)
         stats.uploadParts.push(partNumber)
         return { ...session }
       } finally {
@@ -160,6 +197,12 @@ function createFakeApi(options: FakeApiOptions = {}): { api: FileApiPort; stats:
       stats.complete++
       const session = sessions.get(sessionId)
       if (!session) throw new FileApiError({ message: '会话不存在', httpStatus: 404 })
+      if ((session.missingParts?.length ?? 0) > 0) {
+        throw new FileApiError({
+          message: `分片未上传完整，缺少：${session.missingParts?.join(',')}`,
+          httpStatus: 409,
+        })
+      }
       stats.completedFileId = stats.completedFileId ?? 3000
       return fileObject(scene, fakeFile(session.originalFilename, session.fileSize), 3000)
     },
@@ -375,6 +418,50 @@ describe('UploadEngine 上传状态机', () => {
     // 第 1 片失败两次后被第 3 次尝试拿下
     expect(stats.uploadParts.filter((part) => part === 1)).toHaveLength(1)
     expect(tasks[0]?.status).toBe('COMPLETED')
+  })
+
+  it('服务端已有 71/72 片时，只补第 72 片并等待确认后合并', async () => {
+    const partCount = 72
+    const uploaded = Array.from({ length: 71 }, (_, index) => index + 1)
+    const { api, stats } = createFakeApi({ initialUploadedParts: uploaded })
+    const engine = new UploadEngine({ api, hasher: fakeHasher, concurrency: 3 })
+
+    const tasks = engine.addFiles(
+      [fakeFile('large.pdf', DEFAULT_PART_SIZE * partCount)],
+      'STUDY_MATERIAL',
+    )
+    engine.start()
+    await waitFor(() => tasks[0]?.status === 'COMPLETED', 5000)
+
+    expect(stats.uploadParts).toEqual([72])
+    expect(stats.complete).toBe(1)
+    expect(tasks[0]?.uploadedParts).toHaveLength(partCount)
+  })
+
+  it('单片重试耗尽后继续上传其他片，回查缺片并补传成功', async () => {
+    const partCount = 72
+    const { api, stats } = createFakeApi({
+      partFailuresByNumber: { [partCount]: MAX_PART_RETRIES + 1 },
+    })
+    const engine = new UploadEngine({
+      api,
+      hasher: fakeHasher,
+      concurrency: 6,
+      retryDelays: [1, 1, 1],
+    })
+
+    const tasks = engine.addFiles(
+      [fakeFile('almost-there.pdf', DEFAULT_PART_SIZE * partCount)],
+      'STUDY_MATERIAL',
+    )
+    engine.start()
+    await waitFor(() => tasks[0]?.status === 'COMPLETED', 5000)
+
+    expect(stats.uploadPartAttempts.filter((part) => part === partCount)).toHaveLength(
+      MAX_PART_RETRIES + 2,
+    )
+    expect(stats.complete).toBe(1)
+    expect(tasks[0]?.uploadedParts).toHaveLength(partCount)
   })
 
   it('本地续传记录：损坏 JSON 时安全降级，可按 sessionId 删除', () => {

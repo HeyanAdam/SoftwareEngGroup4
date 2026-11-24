@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 /**
  * 文件持久化：小文件直传、秒传、分片上传、下载与删除。
@@ -171,11 +172,12 @@ public class FileService {
         sessionMapper.insert(session);
         log.info("初始化上传会话 sessionId={} fileSize={} partCount={}", session.getId(),
                 command.fileSize(), partCount);
-        return session;
+        return applyPartProgress(session, List.of());
     }
 
     public FileUploadSession getSession(Long userId, Long sessionId) {
-        return requireSession(userId, sessionId);
+        FileUploadSession session = requireSession(userId, sessionId);
+        return applyPartProgress(session, partMapper.selectUploadedNumbers(sessionId));
     }
 
     public FileUploadSession uploadPart(Long userId, Long sessionId, Integer partNumber,
@@ -221,11 +223,11 @@ public class FileService {
             throw new BizException(500, "分片记录写入失败：" + e.getMessage());
         }
 
-        int uploaded = partMapper.countUploaded(sessionId);
-        sessionMapper.updateProgress(sessionId, uploaded, FileUploadSession.STATUS_UPLOADING);
-        session.setUploadedCount(uploaded);
+        List<Integer> uploadedParts = partMapper.selectUploadedNumbers(sessionId);
+        sessionMapper.updateProgress(sessionId, uploadedParts.size(), FileUploadSession.STATUS_UPLOADING);
+        session.setUploadedCount(uploadedParts.size());
         session.setStatus(FileUploadSession.STATUS_UPLOADING);
-        return session;
+        return applyPartProgress(session, uploadedParts);
     }
 
     public FileObject complete(Long userId, Long sessionId, String scene) {
@@ -239,9 +241,11 @@ public class FileService {
                 return done;
             }
         }
-        int uploaded = partMapper.countUploaded(sessionId);
-        if (uploaded != session.getPartCount()) {
-            throw new BizException(409, "分片未上传完整：" + uploaded + "/" + session.getPartCount());
+        List<Integer> uploadedParts = partMapper.selectUploadedNumbers(sessionId);
+        List<Integer> missingParts = missingPartsOf(session, uploadedParts);
+        if (!missingParts.isEmpty()) {
+            throw new BizException(409, "分片未上传完整：" + uploadedParts.size() + "/"
+                    + session.getPartCount() + "，缺少分片：" + joinParts(missingParts));
         }
         // 只有一个请求能把会话推进到 MERGING，避免并发下重复合并
         if (sessionMapper.tryStartMerging(sessionId) == 0) {
@@ -376,6 +380,34 @@ public class FileService {
     }
 
     // ============ 内部工具 ============
+
+    /**
+     * 把数据库中的分片明细写到会话响应里。前端据此补传具体序号，
+     * 不再依赖“数量相等”猜测缺哪一片。
+     */
+    private FileUploadSession applyPartProgress(FileUploadSession session, List<Integer> uploadedParts) {
+        List<Integer> uploaded = uploadedParts == null ? List.of() : List.copyOf(uploadedParts);
+        session.setUploadedParts(uploaded);
+        session.setMissingParts(missingPartsOf(session, uploaded));
+        session.setUploadedCount(uploaded.size());
+        return session;
+    }
+
+    private List<Integer> missingPartsOf(FileUploadSession session, List<Integer> uploadedParts) {
+        Set<Integer> uploaded = Set.copyOf(uploadedParts);
+        return IntStream.rangeClosed(1, session.getPartCount())
+                .filter(part -> !uploaded.contains(part))
+                .boxed()
+                .toList();
+    }
+
+    private String joinParts(List<Integer> parts) {
+        int shown = Math.min(parts.size(), 12);
+        String text = parts.subList(0, shown).stream()
+                .map(String::valueOf)
+                .collect(java.util.stream.Collectors.joining(","));
+        return parts.size() > shown ? text + " 等 " + parts.size() + " 片" : text;
+    }
 
     private void requireScene(String scene) {
         if (scene == null || !SCENES.contains(scene)) {

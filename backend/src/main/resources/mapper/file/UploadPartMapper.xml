@@ -48,6 +48,13 @@
         ORDER BY part_number
     </select>
 
+    <select id="selectUploadedNumbers" resultType="int">
+        SELECT part_number
+        FROM file_upload_part
+        WHERE session_id = #{sessionId} AND status = 'UPLOADED'
+        ORDER BY part_number
+    </select>
+
     <select id="countUploaded" resultType="int">
         SELECT COUNT(*)
         FROM file_upload_part
