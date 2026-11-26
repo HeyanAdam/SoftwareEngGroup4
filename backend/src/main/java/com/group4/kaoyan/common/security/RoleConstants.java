@@ -79,10 +79,11 @@ public final class RoleConstants {
                     true, List.of(), DataScope.ALL),
 
             new RoleDef(STUDENT, "学生",
-                    "默认注册角色，可问答、可管理本人文件",
+                    "默认注册角色，可问答、可管理本人文件、可查看学习计划与推荐",
                     false,
                     List.of(CHAT_SEND, FILE_VIEW, FILE_UPLOAD, FILE_DOWNLOAD, FILE_DELETE,
-                            STUDY_PLAN_VIEW, STUDY_PLAN_CREATE, STUDY_PLAN_UPDATE, STUDY_TASK_UPDATE),
+                            STUDY_PLAN_VIEW, STUDY_PLAN_CREATE, STUDY_PLAN_UPDATE, STUDY_TASK_UPDATE,
+                            RECOMMENDATION_VIEW, RECOMMENDATION_UPDATE, NOTIFICATION_VIEW, NOTIFICATION_UPDATE),
                     DataScope.SELF),
 
             new RoleDef(CONTENT_OPERATOR, "内容运营",
