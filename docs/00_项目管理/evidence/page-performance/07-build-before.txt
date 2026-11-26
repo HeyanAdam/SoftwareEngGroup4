@@ -1,0 +1,141 @@
+
+> frontend@0.0.0 build
+> vue-tsc -b && vite build
+
+[36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+transforming...
+✓ 2366 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/assets/admin.api-F-lW1CLM.js.br                   0.42 kB
+dist/assets/auth-ntB1Rui3.js.br                        0.43 kB
+dist/assets/admin.api-F-lW1CLM.js.gz                   0.47 kB
+dist/assets/auth-ntB1Rui3.js.gz                        0.50 kB
+dist/assets/AdminUsersPage-hwFLGXW4.css.br             0.54 kB
+dist/assets/FilePage-DqpIIhAm.css.br                   0.54 kB
+dist/assets/permissionModules-4NY_-TL0.js.br           0.59 kB
+dist/assets/AdminLayout-4slqSkkd.css.br                0.67 kB
+dist/assets/AdminUsersPage-hwFLGXW4.css.gz             0.67 kB
+dist/assets/FilePage-DqpIIhAm.css.gz                   0.68 kB
+dist/assets/permissionModules-4NY_-TL0.js.gz           0.69 kB
+dist/assets/AdminDashboardPage-DlDH38i_.css.br         0.77 kB
+dist/assets/TooManyRequestsPage-BKRf-aiI.js.br         0.78 kB
+dist/assets/MainLayout-Cj0MXyyu.js.br                  0.80 kB
+dist/assets/AdminLayout-4slqSkkd.css.gz                0.81 kB
+dist/assets/ForbiddenPage-BBICZBB9.js.br               0.84 kB
+dist/assets/auth-EKtbZYp4.css.br                       0.88 kB
+dist/assets/AdminLoginPage-BZHPDX8Q.css.br             0.93 kB
+dist/assets/AdminDashboardPage-DlDH38i_.css.gz         0.93 kB
+dist/assets/TooManyRequestsPage-BKRf-aiI.js.gz         0.94 kB
+dist/assets/MainLayout-Cj0MXyyu.js.gz                  0.95 kB
+dist/index.html                                        0.96 kB │ gzip:   0.42 kB
+dist/assets/ForbiddenPage-BBICZBB9.js.gz               1.02 kB
+dist/assets/auth-EKtbZYp4.css.gz                       1.04 kB
+dist/assets/ChatPage-DrpyGrbL.css.br                   1.08 kB
+dist/assets/AdminLoginPage-BZHPDX8Q.css.gz             1.12 kB
+dist/assets/ChatPage-DrpyGrbL.css.gz                   1.28 kB
+dist/assets/AdminPermissionsPage-stnWZekW.js.br        1.32 kB
+dist/assets/AdminLayout-DrOh8LSG.js.br                 1.37 kB
+dist/assets/hash.worker-CzLI50Uh.js.br                 1.47 kB
+dist/assets/AdminRolesPage-BXc1kgww.css.br             1.47 kB
+dist/assets/AdminPermissionsPage-stnWZekW.js.gz        1.59 kB
+dist/assets/AdminLogsPage-CaDPr5i-.js.br               1.60 kB
+dist/assets/AdminLayout-DrOh8LSG.js.gz                 1.65 kB
+dist/assets/ForgotPasswordPage-DBb83q6A.js.br          1.69 kB
+dist/assets/hash.worker-CzLI50Uh.js.gz                 1.71 kB
+dist/assets/AdminRolesPage-BXc1kgww.css.gz             1.72 kB
+dist/assets/AdminLogsPage-CaDPr5i-.js.gz               1.94 kB
+dist/assets/RegisterPage-B8XpizjP.js.br                1.95 kB
+dist/assets/AdminLoginPage-C9AR7Aar.js.br              2.03 kB
+dist/assets/ForgotPasswordPage-DBb83q6A.js.gz          2.06 kB
+dist/assets/LoginPage-DnxxZY8r.js.br                   2.30 kB
+dist/assets/RegisterPage-B8XpizjP.js.gz                2.39 kB
+dist/assets/AdminLoginPage-C9AR7Aar.js.gz              2.50 kB
+dist/assets/pinia-Dkz2UNwY.js.br                       2.55 kB
+dist/assets/LoginPage-DnxxZY8r.js.gz                   2.79 kB
+dist/assets/pinia-Dkz2UNwY.js.gz                       2.83 kB
+dist/assets/AdminUsersPage-BpPQyVM8.js.br              3.05 kB
+dist/assets/hash.worker-CzLI50Uh.js                    3.54 kB
+dist/assets/AdminUsersPage-BpPQyVM8.js.gz              3.62 kB
+dist/assets/AdminRolesPage-B_OttGyP.js.br              4.95 kB
+dist/assets/AdminRolesPage-B_OttGyP.js.gz              5.87 kB
+dist/assets/runtime-dom.esm-bundler-D97EBhT6.js.br     5.95 kB
+dist/assets/runtime-dom.esm-bundler-D97EBhT6.js.gz     6.54 kB
+dist/assets/ChatPage-Cs_TQsAI.js.br                    9.18 kB
+dist/assets/FilePage-BxA7DU3H.js.br                    9.25 kB
+dist/assets/ChatPage-Cs_TQsAI.js.gz                   10.52 kB
+dist/assets/FilePage-BxA7DU3H.js.gz                   10.58 kB
+dist/assets/request-CrFy0ZIO.js.br                    20.98 kB
+dist/assets/message-BlfMjgCS.js.br                    21.45 kB
+dist/assets/request-CrFy0ZIO.js.gz                    23.59 kB
+dist/assets/runtime-core.esm-bundler-C-ddFgzV.js.br   23.72 kB
+dist/assets/message-BlfMjgCS.js.gz                    24.41 kB
+dist/assets/runtime-core.esm-bundler-C-ddFgzV.js.gz   26.08 kB
+dist/assets/index-CVU5VGKD.css.br                     37.31 kB
+dist/assets/index-CVU5VGKD.css.gz                     47.96 kB
+dist/assets/AdminDashboardPage-DEhwdsHq.js.br        144.05 kB
+dist/assets/AdminDashboardPage-DEhwdsHq.js.gz        169.24 kB
+dist/assets/index-DUVuG52v.js.br                     223.66 kB
+dist/assets/index-DUVuG52v.js.gz                     274.99 kB
+dist/assets/AdminPageHeader-Chbytioh.css               0.39 kB │ gzip:   0.22 kB
+dist/assets/MainLayout-vNhSpWVT.css                    0.46 kB │ gzip:   0.26 kB
+dist/assets/AdminLogsPage-C6h5glHA.css                 0.76 kB │ gzip:   0.33 kB
+dist/assets/AdminPermissionsPage-BHONoioz.css          0.92 kB │ gzip:   0.40 kB
+dist/assets/AdminUsersPage-hwFLGXW4.css                1.97 kB │ gzip:   0.67 kB
+dist/assets/FilePage-DqpIIhAm.css                      2.08 kB │ gzip:   0.68 kB
+dist/assets/AdminLayout-4slqSkkd.css                   2.60 kB │ gzip:   0.81 kB
+dist/assets/auth-EKtbZYp4.css                          2.95 kB │ gzip:   1.04 kB
+dist/assets/AdminLoginPage-BZHPDX8Q.css                3.13 kB │ gzip:   1.13 kB
+dist/assets/AdminDashboardPage-DlDH38i_.css            4.28 kB │ gzip:   0.93 kB
+dist/assets/ChatPage-DrpyGrbL.css                      4.92 kB │ gzip:   1.29 kB
+dist/assets/AdminRolesPage-BXc1kgww.css                7.43 kB │ gzip:   1.73 kB
+dist/assets/index-CVU5VGKD.css                       362.16 kB │ gzip:  48.25 kB
+dist/assets/NotFoundPage-D0ro0VZ3.js                   0.27 kB │ gzip:   0.24 kB
+dist/assets/StudyPlanPage-DLxF5mlB.js                  0.31 kB │ gzip:   0.29 kB
+dist/assets/DashboardPage-CgGdBh4T.js                  0.41 kB │ gzip:   0.32 kB
+dist/assets/auth.api-BK8Blkoj.js                       0.43 kB │ gzip:   0.22 kB
+dist/assets/validators-igV9OMZj.js                     0.59 kB │ gzip:   0.37 kB
+dist/assets/AdminPageHeader-DMQF9luu.js                0.66 kB │ gzip:   0.38 kB
+dist/assets/UnauthorizedPage-D6ud4Chy.js               0.99 kB │ gzip:   0.66 kB
+dist/assets/admin.api-F-lW1CLM.js                      1.12 kB │ gzip:   0.47 kB
+dist/assets/auth-ntB1Rui3.js                           1.23 kB │ gzip:   0.50 kB
+dist/assets/permissionModules-4NY_-TL0.js              1.33 kB │ gzip:   0.69 kB
+dist/assets/TooManyRequestsPage-BKRf-aiI.js            1.56 kB │ gzip:   0.94 kB
+dist/assets/ForbiddenPage-BBICZBB9.js                  1.76 kB │ gzip:   1.02 kB
+dist/assets/MainLayout-Cj0MXyyu.js                     1.76 kB │ gzip:   0.95 kB
+dist/assets/AdminPermissionsPage-stnWZekW.js           3.14 kB │ gzip:   1.60 kB
+dist/assets/AdminLayout-DrOh8LSG.js                    3.47 kB │ gzip:   1.66 kB
+dist/assets/AdminLogsPage-CaDPr5i-.js                  3.91 kB │ gzip:   1.94 kB
+dist/assets/ForgotPasswordPage-DBb83q6A.js             4.54 kB │ gzip:   2.07 kB
+dist/assets/AdminLoginPage-C9AR7Aar.js                 5.27 kB │ gzip:   2.51 kB
+dist/assets/RegisterPage-B8XpizjP.js                   5.47 kB │ gzip:   2.40 kB
+dist/assets/pinia-Dkz2UNwY.js                          6.00 kB │ gzip:   2.84 kB
+dist/assets/LoginPage-DnxxZY8r.js                      6.95 kB │ gzip:   2.79 kB
+dist/assets/AdminUsersPage-BpPQyVM8.js                 8.40 kB │ gzip:   3.62 kB
+dist/assets/runtime-dom.esm-bundler-D97EBhT6.js       15.41 kB │ gzip:   6.58 kB
+dist/assets/AdminRolesPage-B_OttGyP.js                15.63 kB │ gzip:   5.89 kB
+dist/assets/ChatPage-Cs_TQsAI.js                      29.21 kB │ gzip:  10.60 kB
+dist/assets/FilePage-BxA7DU3H.js                      30.20 kB │ gzip:  10.62 kB
+dist/assets/request-CrFy0ZIO.js                       63.42 kB │ gzip:  23.83 kB
+dist/assets/runtime-core.esm-bundler-C-ddFgzV.js      67.63 kB │ gzip:  26.42 kB
+dist/assets/message-BlfMjgCS.js                       69.98 kB │ gzip:  24.61 kB
+dist/assets/AdminDashboardPage-DEhwdsHq.js           503.68 kB │ gzip: 170.98 kB
+dist/assets/index-DUVuG52v.js                        874.69 kB │ gzip: 277.83 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+dist/icons.svg.gz       2.11 kB
+dist/favicon.svg.gz     1.49 kB
+dist/icons.svg.br       1.89 kB
+dist/favicon.svg.br     1.24 kB
+[32m✓ built in 4.83s[39m
+
+[PLUGIN_TIMINGS] JavaScript callbacks ran for 4.0s of this 4.8s build (83%).
+The slowest callbacks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+  - plugin vite-plugin-compression:runner generateBundle (49%, 2.3s, 1 call)
+Additional callback time came from callbacks under 1s.
+See https://rolldown.rs/reference/InputOptions.checks#bundlertimings for more details.
+

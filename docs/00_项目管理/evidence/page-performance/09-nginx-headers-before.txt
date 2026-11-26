@@ -1,0 +1,25 @@
+### P1 优化前（Vite preview :4173）静态资源响应头
+采集时间：2026-11-26，干净 main 生产构建，未经 Nginx。
+
+#### 主 JS `index-DUVuG52v.js`（HEAD，未带 Accept-Encoding）
+HTTP/1.1 200 OK
+Vary: Origin
+ETag: W/"874693-1795687704731"
+Cache-Control: no-cache
+Content-Length: 874693
+Content-Type: text/javascript
+Last-Modified: Thu, 26 Nov 2026 10:08:24 GMT
+Connection: keep-alive
+
+#### 全局 CSS `index-CVU5VGKD.css`（HEAD）
+HTTP/1.1 200 OK
+Vary: Origin
+ETag: W/"362160-1795687704803"
+Cache-Control: no-cache
+Content-Length: 362160
+Content-Type: text/css
+Last-Modified: Thu, 26 Nov 2026 10:08:24 GMT
+Connection: keep-alive
+
+说明：P1 静态资源统一 `Cache-Control: no-cache`，无长期缓存与 immutable 标记；
+压缩由 preview 按请求头协商（浏览器 GET 带 Accept-Encoding: gzip 时返回 gzip）。

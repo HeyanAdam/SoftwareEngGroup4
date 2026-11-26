@@ -1,0 +1,97 @@
+=== P2 Nginx 响应头基线（原生 nginx/1.26.2，:8088，托管同一份 dist）===
+采集时间: 2026-11-26 21:24:40
+
+### 1) index.html（不长期缓存）
+HTTP/1.1 200 OK
+Server: nginx/1.26.2
+Date: Thu, 26 Nov 2026 13:24:41 GMT
+Content-Type: text/html
+Content-Length: 966
+Last-Modified: Thu, 26 Nov 2026 10:08:24 GMT
+Connection: keep-alive
+ETag: "6b080518-3c6"
+Cache-Control: no-cache
+Accept-Ranges: bytes
+
+
+### 2) 主 JS index-DUVuG52v.js（哈希资源，长期缓存 + gzip_static）
+HTTP/1.1 200 OK
+Server: nginx/1.26.2
+Date: Thu, 26 Nov 2026 13:24:41 GMT
+Content-Type: application/javascript
+Content-Length: 274997
+Last-Modified: Thu, 26 Nov 2026 10:08:24 GMT
+Connection: keep-alive
+ETag: "6b080518-43235"
+Content-Encoding: gzip
+Expires: Fri, 26 Nov 2027 13:24:41 GMT
+Cache-Control: max-age=31536000
+Cache-Control: public, immutable
+Accept-Ranges: bytes
+
+
+### 3) CSS AdminDashboardPage-DlDH38i_.css
+HTTP/1.1 200 OK
+Server: nginx/1.26.2
+Date: Thu, 26 Nov 2026 13:24:41 GMT
+Content-Type: text/css
+Content-Length: 939
+Last-Modified: Thu, 26 Nov 2026 10:08:24 GMT
+Connection: keep-alive
+ETag: "6b080518-3ab"
+Content-Encoding: gzip
+Expires: Fri, 26 Nov 2027 13:24:41 GMT
+Cache-Control: max-age=31536000
+Cache-Control: public, immutable
+Accept-Ranges: bytes
+
+
+### 4) 深链接 SPA 回退
+--- /study-plans
+HTTP/1.1 200 OK
+Server: nginx/1.26.2
+Date: Thu, 26 Nov 2026 13:24:41 GMT
+Content-Type: text/html
+Content-Length: 966
+Last-Modified: Thu, 26 Nov 2026 10:08:24 GMT
+Connection: keep-alive
+ETag: "6b080518-3c6"
+Cache-Control: no-cache
+Accept-Ranges: bytes
+
+--- /chat
+HTTP/1.1 200 OK
+Server: nginx/1.26.2
+Date: Thu, 26 Nov 2026 13:24:42 GMT
+Content-Type: text/html
+Content-Length: 966
+Last-Modified: Thu, 26 Nov 2026 10:08:24 GMT
+Connection: keep-alive
+ETag: "6b080518-3c6"
+Cache-Control: no-cache
+Accept-Ranges: bytes
+
+--- /admin/dashboard
+HTTP/1.1 200 OK
+Server: nginx/1.26.2
+Date: Thu, 26 Nov 2026 13:24:42 GMT
+Content-Type: text/html
+Content-Length: 966
+Last-Modified: Thu, 26 Nov 2026 10:08:24 GMT
+Connection: keep-alive
+ETag: "6b080518-3c6"
+Cache-Control: no-cache
+Accept-Ranges: bytes
+
+
+### 5) /api 反代后端
+HTTP/1.1 200 
+Server: nginx/1.26.2
+Date: Thu, 26 Nov 2026 13:24:42 GMT
+Content-Type: application/json;charset=UTF-8
+Connection: keep-alive
+X-Request-Id: 4ae8866fa620485382c17fdf08db5eb5
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+

@@ -1,0 +1,18 @@
+# 08 · P2 构建产物说明（优化后复测）
+
+- 复测原则：P1 与 P2 必须使用**同一份前端构建产物**，唯一差异是静态资源由谁提供（P1 Vite Preview / P2 Nginx）。
+- 本次 P2 **未重新执行 `npm run build`**，直接复用 P1 阶段生成的 `frontend/dist`（构建日志见 `07-build-before.txt`，构建时间 2026-11-26 10:08，`✓ built in 4.83s`，vite v8.3.8）。
+- 构建期 Vite 已同时生成 `.gz` 与 `.br` 预压缩文件；Nginx 阶段通过 `gzip_static on` 优先返回 `.gz`。
+
+## 关键 chunk 体积（与 07 一致，未变）
+
+| Chunk | 原始大小 | gzip 后 | brotli 后 |
+|---|---:|---:|---:|
+| 主 JS `index-DUVuG52v.js` | 874.69 KB | 277.83 KB | 223.66 KB |
+| 全局 CSS `index-CVU5VGKD.css` | 362.16 KB | 48.25 KB | 37.31 KB |
+| 后台大屏 `AdminDashboardPage-DEhwdsHq.js` | 503.68 KB | 170.98 KB | 144.05 KB |
+| AI 聊天 `ChatPage-Cs_TQsAI.js` | 29.21 KB | 10.60 KB | 9.18 KB |
+| 文件页 `FilePage-BxA7DU3H.js` | 30.20 KB | 10.62 KB | 9.25 KB |
+
+## 构建告警
+- `index-*.js`（874.69 KB）与 `AdminDashboardPage-*.js`（503.68 KB）minify 后超过 500 kB，Vite 给出 chunk 体积告警；是后续按需引入、继续拆分的重点对象（见报告“瓶颈分析 / 后续建议”）。
