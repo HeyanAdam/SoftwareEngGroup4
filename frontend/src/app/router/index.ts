@@ -2,7 +2,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { UNAUTHORIZED_EVENT, type UnauthorizedDetail } from '../../shared/api/request'
 import { useAuthStore } from '../stores/auth'
 import { useAdminAuthStore } from '../stores/adminAuth'
-import { decideAccess, hasAdminScope } from './access'
+import { decideAccess, hasAdminScope, resolveLandingPath } from './access'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -105,7 +105,8 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/',
-    redirect: '/dashboard',
+    // 兜底指到 /chat；真正按权限挑落地页在 beforeEach 里做（那时权限快照已恢复）
+    redirect: '/chat',
     component: () => import('../layouts/MainLayout.vue'),
     meta: { requiresAuth: true },
     children: [
@@ -210,6 +211,15 @@ router.beforeEach(async (to) => {
   } catch {
     userStore.clearAuth()
     return { name: 'Login', query: { redirect: to.fullPath } }
+  }
+
+  // 根路径：按当前权限挑默认落地页（学习计划 → 文件 → 聊天），不再统一送控制台。
+  // '/' 的静态 redirect 会先把目标改写成 /chat，所以这里同时看 redirectedFrom。
+  if (to.path === '/' || to.redirectedFrom?.path === '/') {
+    const landing = resolveLandingPath(userStore.permissions)
+    if (landing !== to.path) {
+      return landing
+    }
   }
 
   const decision = decideAccess({

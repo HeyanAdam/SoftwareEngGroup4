@@ -25,6 +25,25 @@ export type AccessDecision =
   | { type: 'login' }
   | { type: 'forbidden'; reason: 'scope' | 'permission' | 'role' }
 
+/** 学习计划菜单与路由共用的权限码（数组为「或」逻辑），只在这里定义一次，避免两处漂移 */
+export const STUDY_PLAN_PERMISSIONS = ['study-plan:view', 'study-plan:create'] as const
+
+/**
+ * 学生端登录后的默认落地页（任务A：不再把所有人统一送到 /dashboard）：
+ * 1. 有 study-plan:view 或 study-plan:create → /study-plans；
+ * 2. 否则有 file:view → /files；
+ * 3. 都没有 → /chat（聊天是所有学生的基础能力）。
+ */
+export function resolveLandingPath(permissions: string[]): string {
+  if (matchPermission(permissions, [...STUDY_PLAN_PERMISSIONS])) {
+    return '/study-plans'
+  }
+  if (permissions.includes('file:view')) {
+    return '/files'
+  }
+  return '/chat'
+}
+
 /** 任意 admin:* 权限：后台唯一准入口径，不看角色名 */
 export function hasAdminScope(permissions: string[]): boolean {
   return permissions.some((code) => code.startsWith('admin:'))

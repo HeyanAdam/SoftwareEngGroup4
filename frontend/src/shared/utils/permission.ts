@@ -9,8 +9,8 @@ export function usePermission() {
     return authStore.hasPermission(code)
   }
 
-  /** 是否拥有多个权限码中的任意一个 */
-  function hasAnyPermission(codes: string[]): boolean {
+  /** 是否拥有多个权限码中的任意一个（接受只读数组，便于直接传 as const 常量） */
+  function hasAnyPermission(codes: readonly string[]): boolean {
     return codes.some((code) => authStore.hasPermission(code))
   }
 
