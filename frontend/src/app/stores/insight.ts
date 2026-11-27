@@ -1,10 +1,10 @@
 /**
- * 导学推荐 / 学习计划 Store（前端 A 基础版）
+ * 导学推荐 + 学习计划 Store（前端 A）
  *
- * 基础 PR 范围：状态字段按契约指南 11 节建齐，推荐相关 action 可运行；
- * 学习计划的 loadTodayStudy / generateTodayStudy / updateTaskStatus / loadWeeklyReport
- * 依赖 studyplan.api.ts，在功能 PR `feat/frontend-study-plan-coach` 补齐，
- * 这里只保留状态位，不写假实现，避免调用方拿到“看起来成功其实没请求”的结果。
+ * 契约口径：REST 5.1 / 5.2 / 5.3 / 5.4 / 5.5 / 5.6 / 5.11，状态处理 9.1 / 9.2。
+ * 分层：接口在 features 各模块的 api 目录，Mock 只在 API 层；本文件不含任何 Mock 分支。
+ * 错误分区：计划/任务错误走 errorMessage，推荐错误走 recommendationErrorMessage，
+ * 周报错误走 weeklyReportErrorMessage —— 推荐或周报失败不能污染任务区块（契约 9.1 / 5.11）。
  */
 
 import { defineStore } from 'pinia'
@@ -17,29 +17,38 @@ import {
   fetchRecommendations,
 } from '../../features/insight/api/insight.api'
 import { isInsightMockEnabled } from '../../features/insight/mock/insight.mock'
-import type { Recommendation, RecommendationContextType, RecommendationScene } from '../../features/insight/types'
+import type {
+  Recommendation,
+  RecommendationContextType,
+  RecommendationScene,
+} from '../../features/insight/types'
 import { normalizeRecommendations, RECOMMENDATION_DEFAULT_LIMIT } from '../../features/insight/utils'
-import type { StudyTask, TodayStudyPlan, WeeklyStudyReportSummary } from '../../features/studyplan/types'
-
-/**
- * 任务排序（契约 1.6）：priority 降序 → dueAt 升序 → 无截止时间靠后 → id 升序。
- * 只用于接受推荐后把新任务插到正确位置，页面渲染在功能 PR 复用。
- */
-function compareStudyTask(a: StudyTask, b: StudyTask): number {
-  if (b.priority !== a.priority) return b.priority - a.priority
-  if (a.dueAt !== b.dueAt) {
-    if (a.dueAt === null) return 1
-    if (b.dueAt === null) return -1
-    return a.dueAt < b.dueAt ? -1 : 1
-  }
-  return a.id - b.id
-}
+import {
+  fetchTodayPlan,
+  fetchWeeklyReport,
+  generateTodayPlan as generateTodayPlanApi,
+  updateTaskStatus as updateTaskStatusApi,
+} from '../../features/studyplan/api/studyplan.api'
+import type {
+  StudyTaskUpdateStatus,
+  TodayStudyPlan,
+  WeeklyStudyReportSummary,
+} from '../../features/studyplan/types'
+import {
+  applyTaskStatus,
+  applyTaskUpdate,
+  insertTask,
+  restoreTask,
+} from '../../features/studyplan/utils'
 
 function errorText(error: unknown): string {
   if (error instanceof ApiError) return error.message
   if (error instanceof Error) return error.message
   return '操作失败，请稍后重试'
 }
+
+/** 契约 5.2：没有有效备考目标时后端返回 400 + 10000，页面要给出可执行提示 */
+const NO_EXAM_GOAL_CODE = 10000
 
 export const useInsightStore = defineStore('insight', () => {
   const todayPlan = ref<TodayStudyPlan | null>(null)
@@ -51,14 +60,89 @@ export const useInsightStore = defineStore('insight', () => {
   const submittingTaskIds = ref<number[]>([])
   const acceptingRecommendationIds = ref<number[]>([])
   const errorMessage = ref('')
+  const recommendationErrorMessage = ref('')
+  const weeklyReportErrorMessage = ref('')
   const dataMode = ref<'mock' | 'api'>(isInsightMockEnabled() ? 'mock' : 'api')
 
-  /** 幂等键按推荐 id 保留：失败重试复用同一个键，成功后随推荐状态一起作废 */
+  /** 幂等键按推荐 id 保留：失败重试复用同一个键，成功后作废 */
   const idempotencyKeys = new Map<number, string>()
 
   const hasRecommendations = computed(() => recommendations.value.length > 0)
 
-  /** 查询推荐（契约 5.4）；失败只置错误信息，不影响其它区块 */
+  function refreshDataMode(): void {
+    dataMode.value = isInsightMockEnabled() ? 'mock' : 'api'
+  }
+
+  /** 获取今日计划（契约 5.1）；空计划是正常结果，不当成失败 */
+  async function loadTodayStudy(): Promise<void> {
+    loadingPlan.value = true
+    errorMessage.value = ''
+    refreshDataMode()
+    try {
+      todayPlan.value = await fetchTodayPlan()
+    } catch (error) {
+      todayPlan.value = null
+      errorMessage.value = errorText(error)
+    } finally {
+      loadingPlan.value = false
+    }
+  }
+
+  /** 生成今日计划（契约 5.2）；已有计划时后端直接返回，不重复创建 */
+  async function generateTodayStudy(): Promise<void> {
+    if (loadingPlan.value) return
+    loadingPlan.value = true
+    errorMessage.value = ''
+    try {
+      todayPlan.value = await generateTodayPlanApi()
+    } catch (error) {
+      if (error instanceof ApiError && error.code === NO_EXAM_GOAL_CODE) {
+        errorMessage.value = '请先填写备考目标后再生成学习计划'
+      } else {
+        errorMessage.value = errorText(error)
+      }
+    } finally {
+      loadingPlan.value = false
+    }
+  }
+
+  /**
+   * 修改任务状态（契约 5.3 / 9.2）：
+   * 防重复 → 乐观更新 → 200 用响应任务覆盖 → 409 提示并重新拉今日计划 → 其它失败回滚。
+   */
+  async function updateTaskStatus(taskId: number, status: StudyTaskUpdateStatus): Promise<void> {
+    const plan = todayPlan.value
+    const task = plan?.tasks.find((item) => item.id === taskId)
+    if (!plan || !task) return
+    if (submittingTaskIds.value.includes(taskId)) return
+    if (task.status === status) return
+
+    const previous = { ...task }
+    submittingTaskIds.value = [...submittingTaskIds.value, taskId]
+    errorMessage.value = ''
+
+    const optimistic = applyTaskStatus(plan, taskId, status)
+    todayPlan.value = optimistic
+
+    try {
+      const updated = await updateTaskStatusApi(taskId, status, task.version)
+      todayPlan.value = applyTaskUpdate(optimistic, updated)
+    } catch (error) {
+      const conflict = error instanceof ApiError && (error.httpStatus === 409 || error.code === 409)
+      if (conflict) {
+        // 版本冲突：不保留本地错误版本，直接以服务端为准
+        await loadTodayStudy()
+        errorMessage.value = '任务已被修改，请刷新后重试'
+      } else {
+        todayPlan.value = restoreTask(optimistic, previous)
+        errorMessage.value = errorText(error)
+      }
+    } finally {
+      submittingTaskIds.value = submittingTaskIds.value.filter((id) => id !== taskId)
+    }
+  }
+
+  /** 查询推荐（契约 5.4）；失败只置推荐区错误，不影响任务列表 */
   async function loadRecommendations(
     scene: RecommendationScene,
     contextType: RecommendationContextType = 'NONE',
@@ -66,14 +150,14 @@ export const useInsightStore = defineStore('insight', () => {
     limit: number = RECOMMENDATION_DEFAULT_LIMIT,
   ): Promise<void> {
     loadingRecommendations.value = true
-    errorMessage.value = ''
-    dataMode.value = isInsightMockEnabled() ? 'mock' : 'api'
+    recommendationErrorMessage.value = ''
+    refreshDataMode()
     try {
       const result = await fetchRecommendations({ scene, contextType, contextId, limit })
       recommendations.value = normalizeRecommendations(result.items)
     } catch (error) {
       recommendations.value = []
-      errorMessage.value = errorText(error)
+      recommendationErrorMessage.value = errorText(error)
     } finally {
       loadingRecommendations.value = false
     }
@@ -85,16 +169,15 @@ export const useInsightStore = defineStore('insight', () => {
 
     const date = targetDate ?? todayPlan.value?.planDate ?? ''
     if (!date) {
-      // targetDate 是契约 5.5 的请求体字段，前端不自行推算“今天”，
-      // 未加载今日计划时不伪造日期，直接给出可展示提示。
-      errorMessage.value = '请先加载今日学习计划后再接受推荐'
+      // targetDate 是契约 5.5 的请求体字段；未加载今日计划时不伪造日期
+      recommendationErrorMessage.value = '请先加载今日学习计划后再接受推荐'
       return
     }
 
     const key = idempotencyKeys.get(id) ?? createIdempotencyKey()
     idempotencyKeys.set(id, key)
     acceptingRecommendationIds.value = [...acceptingRecommendationIds.value, id]
-    errorMessage.value = ''
+    recommendationErrorMessage.value = ''
 
     try {
       const result = await acceptRecommendationApi(id, date, key)
@@ -103,12 +186,10 @@ export const useInsightStore = defineStore('insight', () => {
         item.id === result.recommendation.id ? result.recommendation : item,
       )
       if (todayPlan.value) {
-        const tasks = todayPlan.value.tasks.filter((task) => task.id !== result.task.id)
-        tasks.push(result.task)
-        todayPlan.value = { ...todayPlan.value, tasks: tasks.sort(compareStudyTask) }
+        todayPlan.value = insertTask(todayPlan.value, result.task)
       }
     } catch (error) {
-      errorMessage.value = errorText(error)
+      recommendationErrorMessage.value = errorText(error)
     } finally {
       acceptingRecommendationIds.value = acceptingRecommendationIds.value.filter(
         (value) => value !== id,
@@ -120,17 +201,31 @@ export const useInsightStore = defineStore('insight', () => {
   async function dismissRecommendation(id: number): Promise<void> {
     if (acceptingRecommendationIds.value.includes(id)) return
     acceptingRecommendationIds.value = [...acceptingRecommendationIds.value, id]
-    errorMessage.value = ''
+    recommendationErrorMessage.value = ''
     try {
       await dismissRecommendationApi(id)
       recommendations.value = recommendations.value.filter((item) => item.id !== id)
       idempotencyKeys.delete(id)
     } catch (error) {
-      errorMessage.value = errorText(error)
+      recommendationErrorMessage.value = errorText(error)
     } finally {
       acceptingRecommendationIds.value = acceptingRecommendationIds.value.filter(
         (value) => value !== id,
       )
+    }
+  }
+
+  /** 本周诊断（契约 5.11）：reportId = null 是未生成，不是错误 */
+  async function loadWeeklyReport(): Promise<void> {
+    loadingWeeklyReport.value = true
+    weeklyReportErrorMessage.value = ''
+    try {
+      weeklyReport.value = await fetchWeeklyReport()
+    } catch (error) {
+      weeklyReport.value = null
+      weeklyReportErrorMessage.value = errorText(error)
+    } finally {
+      loadingWeeklyReport.value = false
     }
   }
 
@@ -144,8 +239,10 @@ export const useInsightStore = defineStore('insight', () => {
     submittingTaskIds.value = []
     acceptingRecommendationIds.value = []
     errorMessage.value = ''
+    recommendationErrorMessage.value = ''
+    weeklyReportErrorMessage.value = ''
     idempotencyKeys.clear()
-    dataMode.value = isInsightMockEnabled() ? 'mock' : 'api'
+    refreshDataMode()
   }
 
   return {
@@ -158,11 +255,17 @@ export const useInsightStore = defineStore('insight', () => {
     submittingTaskIds,
     acceptingRecommendationIds,
     errorMessage,
+    recommendationErrorMessage,
+    weeklyReportErrorMessage,
     dataMode,
     hasRecommendations,
+    loadTodayStudy,
+    generateTodayStudy,
+    updateTaskStatus,
     loadRecommendations,
     acceptRecommendation,
     dismissRecommendation,
+    loadWeeklyReport,
     reset,
   }
 })
