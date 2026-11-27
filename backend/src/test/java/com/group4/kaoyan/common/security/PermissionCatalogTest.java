@@ -25,17 +25,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @DisplayName("P2-权限码清单与角色权限矩阵")
 class PermissionCatalogTest {
 
-    /** 权限码总数：11 条 V6 已有 + 9 条业务域新增。 */
-    private static final int EXPECTED_PERMISSION_COUNT = 20;
+    /** 权限码总数：11 条 V6 已有 + 9 条业务域新增 + 4 条推荐/通知 (V14)。 */
+    private static final int EXPECTED_PERMISSION_COUNT = 24;
 
     /** 权限码命名规范：module:action，小写、中划线分段，可多级（admin:user:list）。 */
     private static final Pattern CODE_PATTERN = Pattern.compile("^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$");
 
     @Test
-    @DisplayName("权限码共 20 条：11 条 V6 沿用 + 9 条新增")
+    @DisplayName("权限码共 24 条：11 条 V6 沿用 + 9 条业务域 + 4 条推荐通知")
     void catalogHasExpectedSize() {
         assertEquals(EXPECTED_PERMISSION_COUNT, PermissionConstants.CATALOG.size(),
-                "权限码数量应为 11 条 V6 基线 + 9 条业务域新增");
+                "权限码数量应为 11 条 V6 基线 + 9 条业务域 + 4 条推荐通知");
         assertEquals(EXPECTED_PERMISSION_COUNT, PermissionConstants.ALL_CODES.size(),
                 "ALL_CODES 必须与 CATALOG 条数一致");
     }
@@ -71,8 +71,8 @@ class PermissionCatalogTest {
     }
 
     @Test
-    @DisplayName("扩展的 9 条权限码：学习计划 4 + 题库 1 + 文件 4")
-    void extendedCodesAreTheExpectedNine() {
+    @DisplayName("扩展的 13 条权限码：学习计划 4 + 推荐通知 4 + 题库 1 + 文件 4")
+    void extendedCodesAreTheExpectedThirteen() {
         List<String> v6 = List.of(
                 "kb:view", "kb:create", "kb:delete",
                 "doc:upload", "doc:delete",
@@ -85,9 +85,11 @@ class PermissionCatalogTest {
                 .toList();
         assertEquals(List.of(
                 "study-plan:view", "study-plan:create", "study-plan:update", "study-task:update",
+                "recommendation:view", "recommendation:update",
+                "notification:view", "notification:update",
                 "question:view",
                 "file:view", "file:upload", "file:download", "file:delete"), extended,
-                "新增的 9 条业务权限码必须是这 9 条，顺序与字典一致");
+                "新增的 13 条业务权限码必须是这 13 条，顺序与字典一致");
     }
 
     @Test
@@ -141,16 +143,18 @@ class PermissionCatalogTest {
     }
 
     @Test
-    @DisplayName("STUDENT 拥有问答、文件与学习计划权限：不得直接浏览知识库（接口文档 11.5）")
+    @DisplayName("STUDENT 拥有问答、文件、学习计划、推荐与通知权限：不得直接浏览知识库（接口文档 11.5）")
     void studentHasExpectedDefaultPermissions() {
         RoleConstants.RoleDef student = RoleConstants.find(RoleConstants.STUDENT).orElseThrow();
         assertEquals(List.of(PermissionConstants.CHAT_SEND,
                         PermissionConstants.FILE_VIEW, PermissionConstants.FILE_UPLOAD,
                         PermissionConstants.FILE_DOWNLOAD, PermissionConstants.FILE_DELETE,
                         PermissionConstants.STUDY_PLAN_VIEW, PermissionConstants.STUDY_PLAN_CREATE,
-                        PermissionConstants.STUDY_PLAN_UPDATE, PermissionConstants.STUDY_TASK_UPDATE),
+                        PermissionConstants.STUDY_PLAN_UPDATE, PermissionConstants.STUDY_TASK_UPDATE,
+                        PermissionConstants.RECOMMENDATION_VIEW, PermissionConstants.RECOMMENDATION_UPDATE,
+                        PermissionConstants.NOTIFICATION_VIEW, PermissionConstants.NOTIFICATION_UPDATE),
                 student.defaultPermissions(),
-                "STUDENT 的官方授权应包含问答、文件和学习计划权限");
+                "STUDENT 的官方授权应包含问答、文件、学习计划、推荐与通知权限");
         assertEquals(DataScope.SELF, student.defaultDataScope(), "学生数据范围应为 SELF");
         assertFalse(student.defaultPermissions().contains(PermissionConstants.KB_VIEW),
                 "普通学生不得直接浏览知识库");

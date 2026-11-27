@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.recommendation.mapper.RecommendationMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.modules.recommendation.entity.UserRecommendation">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="scene" property="scene"/>
+        <result column="context_type" property="contextType"/>
+        <result column="context_id" property="contextId"/>
+        <result column="type" property="type"/>
+        <result column="title" property="title"/>
+        <result column="reason" property="reason"/>
+        <result column="action_type" property="actionType"/>
+        <result column="action_label" property="actionLabel"/>
+        <result column="action_path" property="actionPath"/>
+        <result column="score" property="score"/>
+        <result column="estimated_minutes" property="estimatedMinutes"/>
+        <result column="subject" property="subject"/>
+        <result column="knowledge_point" property="knowledgePoint"/>
+        <result column="status" property="status"/>
+        <result column="accepted_task_id" property="acceptedTaskId"/>
+        <result column="dedup_key" property="dedupKey"/>
+        <result column="expires_at" property="expiresAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, scene, context_type, context_id, type, title, reason, action_type, action_label,
+        action_path, score, estimated_minutes, subject, knowledge_point, status, accepted_task_id,
+        dedup_key, expires_at, create_time, update_time
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_recommendation WHERE id = #{id}
+    </select>
+
+    <select id="selectActiveByUserScene" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_recommendation
+        WHERE user_id = #{userId}
+          AND scene = #{scene}
+          AND status = 'ACTIVE'
+          AND (expires_at IS NULL OR expires_at > #{now})
+        ORDER BY score DESC, id DESC
+    </select>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.modules.recommendation.entity.UserRecommendation"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_recommendation
+            (user_id, scene, context_type, context_id, type, title, reason, action_type, action_label,
+             action_path, score, estimated_minutes, subject, knowledge_point, status, accepted_task_id,
+             dedup_key, expires_at, create_time, update_time)
+        VALUES
+            (#{userId}, #{scene}, #{contextType}, #{contextId}, #{type}, #{title}, #{reason},
+             #{actionType}, #{actionLabel}, #{actionPath}, #{score}, #{estimatedMinutes}, #{subject},
+             #{knowledgePoint}, #{status}, #{acceptedTaskId}, #{dedupKey}, #{expiresAt},
+             #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="updateAccepted">
+        UPDATE user_recommendation
+        SET status = 'ACCEPTED',
+            accepted_task_id = #{taskId},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = 'ACTIVE'
+    </update>
+
+    <update id="updateDismissed">
+        UPDATE user_recommendation
+        SET status = 'DISMISSED',
+            update_time = NOW()
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status NOT IN ('DISMISSED', 'EXPIRED')
+    </update>
+</mapper>

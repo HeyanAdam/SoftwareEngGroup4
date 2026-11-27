@@ -42,4 +42,10 @@ public final class RealtimeProtocol {
     public static final String TYPE_REFERENCES = "references";
     public static final String TYPE_DELTA = "delta";
     public static final String TYPE_DONE = "done";
+
+    /** 推荐列表变化 (任务完成后后端 A 推送)。 */
+    public static final String TYPE_RECOMMENDATION_UPDATED = "recommendation.updated";
+
+    /** 新通知 (后端 B 推送,但事件类型常量由后端 A 统一维护)。 */
+    public static final String TYPE_NOTIFICATION_CREATED = "notification.created";
 }

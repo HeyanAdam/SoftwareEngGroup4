@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.studyplan.mapper.StudyTaskMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.modules.studyplan.entity.StudyTask">
+        <id column="id" property="id"/>
+        <result column="plan_id" property="planId"/>
+        <result column="user_id" property="userId"/>
+        <result column="plan_date" property="planDate"/>
+        <result column="title" property="title"/>
+        <result column="subject" property="subject"/>
+        <result column="knowledge_point" property="knowledgePoint"/>
+        <result column="estimated_minutes" property="estimatedMinutes"/>
+        <result column="due_at" property="dueAt"/>
+        <result column="status" property="status"/>
+        <result column="priority" property="priority"/>
+        <result column="version" property="version"/>
+        <result column="completed_at" property="completedAt"/>
+        <result column="deleted" property="deleted"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, plan_id, user_id, plan_date, title, subject, knowledge_point, estimated_minutes,
+        due_at, status, priority, version, completed_at, deleted, create_time, update_time
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM study_task WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectByPlanId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM study_task
+        WHERE plan_id = #{planId} AND deleted = 0
+        ORDER BY priority DESC,
+                 CASE WHEN due_at IS NULL THEN 1 ELSE 0 END ASC,
+                 due_at ASC,
+                 id ASC
+    </select>
+
+    <select id="selectByUserAndDate" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM study_task
+        WHERE user_id = #{userId} AND plan_date = #{planDate} AND deleted = 0
+        ORDER BY priority DESC,
+                 CASE WHEN due_at IS NULL THEN 1 ELSE 0 END ASC,
+                 due_at ASC,
+                 id ASC
+    </select>
+
+    <insert id="insert" parameterType="com.group4.kaoyan.modules.studyplan.entity.StudyTask"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO study_task
+            (plan_id, user_id, plan_date, title, subject, knowledge_point, estimated_minutes,
+             due_at, status, priority, version, completed_at, deleted, create_time, update_time)
+        VALUES
+            (#{planId}, #{userId}, #{planDate}, #{title}, #{subject}, #{knowledgePoint}, #{estimatedMinutes},
+             #{dueAt}, #{status}, #{priority}, #{version}, #{completedAt}, 0, #{createTime}, #{updateTime})
+    </insert>
+
+    <!-- 乐观锁条件 UPDATE, version 不匹配时影响 0 行 -->
+    <update id="updateWithVersion">
+        UPDATE study_task
+        SET status = #{task.status},
+            completed_at = CASE WHEN #{task.status} = 'COMPLETED' THEN NOW() ELSE NULL END,
+            version = version + 1,
+            update_time = NOW()
+        WHERE id = #{task.id}
+          AND user_id = #{task.userId}
+          AND version = #{expectedVersion}
+          AND deleted = 0
+    </update>
+</mapper>

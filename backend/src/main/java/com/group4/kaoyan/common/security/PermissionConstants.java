@@ -40,6 +40,18 @@ public final class PermissionConstants {
     /** 更新任务状态：PATCH /api/v1/study-tasks/{task_id} */
     public static final String STUDY_TASK_UPDATE = "study-task:update";
 
+    /** 查询导学推荐：GET /api/v1/recommendations */
+    public static final String RECOMMENDATION_VIEW = "recommendation:view";
+
+    /** 接受或忽略推荐：POST /api/v1/recommendations/{id}/accept、/dismiss */
+    public static final String RECOMMENDATION_UPDATE = "recommendation:update";
+
+    /** 查询本人通知和未读数：GET /api/v1/notifications、/unread-count */
+    public static final String NOTIFICATION_VIEW = "notification:view";
+
+    /** 标记通知已读：PUT /api/v1/notifications/{id}/read、/read-all */
+    public static final String NOTIFICATION_UPDATE = "notification:update";
+
     // ==================== 题库（21xxx） ====================
 
     /** 浏览题库：GET /api/v1/questions、/{question_id}、/random */
@@ -109,12 +121,16 @@ public final class PermissionConstants {
     public record PermissionDef(String code, String name, String module, int sort) {
     }
 
-    /** 权限字典：全量 20 个权限码，顺序即后台展示顺序。 */
+    /** 权限字典：全量 24 个权限码，顺序即后台展示顺序。 */
     public static final List<PermissionDef> CATALOG = List.of(
             new PermissionDef(STUDY_PLAN_VIEW, "查看学习计划", "督学陪伴", 1),
             new PermissionDef(STUDY_PLAN_CREATE, "生成学习计划", "督学陪伴", 2),
             new PermissionDef(STUDY_PLAN_UPDATE, "调整学习计划", "督学陪伴", 3),
             new PermissionDef(STUDY_TASK_UPDATE, "更新任务状态", "督学陪伴", 4),
+            new PermissionDef(RECOMMENDATION_VIEW, "查看导学推荐", "督学陪伴", 45),
+            new PermissionDef(RECOMMENDATION_UPDATE, "接受或忽略推荐", "督学陪伴", 46),
+            new PermissionDef(NOTIFICATION_VIEW, "查看通知", "督学陪伴", 47),
+            new PermissionDef(NOTIFICATION_UPDATE, "更新通知状态", "督学陪伴", 48),
 
             new PermissionDef(QUESTION_VIEW, "浏览题库", "刷题训练", 10),
 
