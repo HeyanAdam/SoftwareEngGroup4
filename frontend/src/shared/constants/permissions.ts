@@ -1,6 +1,7 @@
 /**
  * 角色与权限码常量
  * 来源：《权限表.md》（P2 交付，20 条权限码 / 4 个角色码）
+ * 2026-11 增量：按《契约_学习计划推荐通知前后端共同契约》2.1 新增 4 条推荐/通知权限码（共 24 条）
  * 规则：前端只允许用权限码判断显隐，禁止按角色名硬编码控制界面
  */
 
@@ -14,12 +15,16 @@ export const ROLES = {
 
 export type RoleCode = (typeof ROLES)[keyof typeof ROLES]
 
-/** 权限码（20 条，格式 module:action） */
+/** 权限码（24 条，格式 module:action） */
 export const PERMISSIONS = {
   STUDY_PLAN_VIEW: 'study-plan:view',
   STUDY_PLAN_CREATE: 'study-plan:create',
   STUDY_PLAN_UPDATE: 'study-plan:update',
   STUDY_TASK_UPDATE: 'study-task:update',
+  RECOMMENDATION_VIEW: 'recommendation:view',
+  RECOMMENDATION_UPDATE: 'recommendation:update',
+  NOTIFICATION_VIEW: 'notification:view',
+  NOTIFICATION_UPDATE: 'notification:update',
   QUESTION_VIEW: 'question:view',
   FILE_VIEW: 'file:view',
   FILE_UPLOAD: 'file:upload',
