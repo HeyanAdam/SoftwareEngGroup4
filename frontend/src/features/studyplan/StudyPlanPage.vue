@@ -32,7 +32,8 @@
             <el-button size="small" :loading="loadingPlan" @click="handleRefresh">重试</el-button>
           </div>
 
-          <div v-if="emptyPlan" class="study-plan__empty">
+          <!-- 空态与错误互斥：网络/500 只显示错误卡，不能同时显示“还没有今日学习计划”（契约 9.1） -->
+          <div v-if="emptyPlan && !errorMessage" class="study-plan__empty">
             <p class="study-plan__empty-title">还没有今日学习计划</p>
             <p class="study-plan__empty-hint">
               根据你的备考目标、基础水平和每周可学习时间，生成 1～3 项今日任务。
