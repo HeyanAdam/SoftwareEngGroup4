@@ -70,7 +70,7 @@
       <aside v-if="canViewRecommendations" class="study-plan__rail">
         <RecommendationRail
           :items="recommendations"
-          :loading="loadingRecommendations"
+          :loading="railLoading"
           :error-message="recommendationErrorMessage"
           :accepting-ids="acceptingRecommendationIds"
           context-label="根据今日计划推荐"
@@ -131,6 +131,14 @@ const canGeneratePlan = computed(() => hasPermission(PERMISSIONS.STUDY_PLAN_CREA
 
 const plan = computed(() => todayPlan.value)
 const emptyPlan = computed(() => isPlanEmpty(todayPlan.value))
+
+/**
+ * 推荐栏加载态：推荐请求未开始时（今日计划还在加载）也按 loading 渲染骨架屏。
+ * 否则首屏会先闪一下“暂时没有推荐”的空态，再跳到骨架屏（指南 14：loading/empty 不闪烁）。
+ */
+const railLoading = computed(
+  () => loadingRecommendations.value || (loadingPlan.value && recommendations.value.length === 0),
+)
 
 onMounted(async () => {
   await store.loadTodayStudy()

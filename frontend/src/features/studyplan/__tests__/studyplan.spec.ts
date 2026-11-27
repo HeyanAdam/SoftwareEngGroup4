@@ -218,6 +218,24 @@ describe('Insight Store 学习计划流程', () => {
     expect(store.submittingTaskIds).toEqual([])
   })
 
+  it('同一任务连点只提交一次 PATCH（契约 9.2 / 指南 13.4）', async () => {
+    const store = useInsightStore()
+    await store.loadTodayStudy()
+    // 连点：两次调用之间不等待，第二次必须被 submittingTaskIds 挡住
+    await Promise.all([
+      store.updateTaskStatus(502, 'COMPLETED'),
+      store.updateTaskStatus(502, 'COMPLETED'),
+    ])
+
+    const task = store.todayPlan?.tasks.find((item) => item.id === 502)
+    // 只发一次请求的直接证据：version 只前进到 3。
+    // 若第二个 PATCH 也发出，它会拿 version 3 再提交，版本会变成 4 或触发 409。
+    expect(task?.version).toBe(3)
+    expect(task?.status).toBe('COMPLETED')
+    expect(store.errorMessage).toBe('')
+    expect(store.submittingTaskIds).toEqual([])
+  })
+
   it('版本冲突 409：提示刷新并重新拉取，不保留旧版本', async () => {
     const store = useInsightStore()
     await store.loadTodayStudy()
