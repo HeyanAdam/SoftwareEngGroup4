@@ -23,10 +23,13 @@ import { RECOMMENDATION_DEFAULT_LIMIT } from '../utils'
 export const INSIGHT_MOCK_FLAG_KEY = 'kaoyan.insight.mock'
 export const INSIGHT_MOCK_SCENARIO_KEY = 'kaoyan.insight.mock.scenario'
 
-export type InsightMockScenario = 'normal' | 'empty' | 'error'
+export type InsightMockScenario = 'normal' | 'empty' | 'loading' | 'error'
 
 /** 模拟网络延迟，让骨架屏和错误态能被看到 */
 const MOCK_DELAY = 160
+
+/** loading 场景的延迟：足够看清骨架屏，又不至于像卡死 */
+const MOCK_LOADING_DELAY = 2200
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -47,7 +50,7 @@ export function isInsightMockEnabled(): boolean {
 
 export function getInsightMockScenario(): InsightMockScenario {
   const value = readStorage(INSIGHT_MOCK_SCENARIO_KEY)
-  if (value === 'empty' || value === 'error') return value
+  if (value === 'empty' || value === 'error' || value === 'loading') return value
   return 'normal'
 }
 
@@ -118,8 +121,10 @@ function withScene(scene: RecommendationScene): Recommendation[] {
 export async function mockRecommendationList(
   query: RecommendationQuery,
 ): Promise<RecommendationList> {
-  await delay(MOCK_DELAY)
-  if (getInsightMockScenario() === 'empty' || getInsightMockScenario() === 'error') {
+  const scenario = getInsightMockScenario()
+  // loading 场景：拖长响应时间，让推荐栏骨架屏可见
+  await delay(scenario === 'loading' ? MOCK_LOADING_DELAY : MOCK_DELAY)
+  if (scenario === 'empty' || scenario === 'error') {
     return { items: [], generatedAt: MOCK_GENERATED_AT }
   }
   const limit = Math.min(query.limit ?? RECOMMENDATION_DEFAULT_LIMIT, RECOMMENDATION_DEFAULT_LIMIT)

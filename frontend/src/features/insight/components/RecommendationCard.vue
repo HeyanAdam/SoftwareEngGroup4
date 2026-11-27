@@ -163,5 +163,12 @@ function handlePrimary(): void {
   .rec-card__actions {
     flex-wrap: wrap;
   }
+
+  /* 窄屏两个按钮各占一行，避免把卡片撑出横向滚动 */
+  .rec-card__actions :deep(.el-button) {
+    flex: 1 1 100%;
+    margin-left: 0;
+    min-width: 0;
+  }
 }
 </style>

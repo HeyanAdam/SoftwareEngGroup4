@@ -62,6 +62,8 @@ export const useInsightStore = defineStore('insight', () => {
   const errorMessage = ref('')
   const recommendationErrorMessage = ref('')
   const weeklyReportErrorMessage = ref('')
+  /** 最近一次计划级失败的接口码：页面据此决定是否走既有 403 处理（契约 9.1） */
+  const lastErrorCode = ref(0)
   const dataMode = ref<'mock' | 'api'>(isInsightMockEnabled() ? 'mock' : 'api')
 
   /** 幂等键按推荐 id 保留：失败重试复用同一个键，成功后作废 */
@@ -77,12 +79,14 @@ export const useInsightStore = defineStore('insight', () => {
   async function loadTodayStudy(): Promise<void> {
     loadingPlan.value = true
     errorMessage.value = ''
+    lastErrorCode.value = 0
     refreshDataMode()
     try {
       todayPlan.value = await fetchTodayPlan()
     } catch (error) {
       todayPlan.value = null
       errorMessage.value = errorText(error)
+      lastErrorCode.value = error instanceof ApiError ? error.code : 0
     } finally {
       loadingPlan.value = false
     }
@@ -93,9 +97,11 @@ export const useInsightStore = defineStore('insight', () => {
     if (loadingPlan.value) return
     loadingPlan.value = true
     errorMessage.value = ''
+    lastErrorCode.value = 0
     try {
       todayPlan.value = await generateTodayPlanApi()
     } catch (error) {
+      lastErrorCode.value = error instanceof ApiError ? error.code : 0
       if (error instanceof ApiError && error.code === NO_EXAM_GOAL_CODE) {
         errorMessage.value = '请先填写备考目标后再生成学习计划'
       } else {
@@ -163,15 +169,15 @@ export const useInsightStore = defineStore('insight', () => {
     }
   }
 
-  /** 接受推荐（契约 5.5）：幂等键只生成一次，重复点击直接忽略 */
-  async function acceptRecommendation(id: number, targetDate?: string): Promise<void> {
-    if (acceptingRecommendationIds.value.includes(id)) return
+  /** 接受推荐（契约 5.5）：幂等键只生成一次，重复点击直接忽略；返回是否成功，供页面提示 */
+  async function acceptRecommendation(id: number, targetDate?: string): Promise<boolean> {
+    if (acceptingRecommendationIds.value.includes(id)) return false
 
     const date = targetDate ?? todayPlan.value?.planDate ?? ''
     if (!date) {
       // targetDate 是契约 5.5 的请求体字段；未加载今日计划时不伪造日期
       recommendationErrorMessage.value = '请先加载今日学习计划后再接受推荐'
-      return
+      return false
     }
 
     const key = idempotencyKeys.get(id) ?? createIdempotencyKey()
@@ -188,8 +194,11 @@ export const useInsightStore = defineStore('insight', () => {
       if (todayPlan.value) {
         todayPlan.value = insertTask(todayPlan.value, result.task)
       }
+      return true
     } catch (error) {
       recommendationErrorMessage.value = errorText(error)
+      // 失败保留同一个幂等键，重试不会重复建任务
+      return false
     } finally {
       acceptingRecommendationIds.value = acceptingRecommendationIds.value.filter(
         (value) => value !== id,
@@ -241,6 +250,7 @@ export const useInsightStore = defineStore('insight', () => {
     errorMessage.value = ''
     recommendationErrorMessage.value = ''
     weeklyReportErrorMessage.value = ''
+    lastErrorCode.value = 0
     idempotencyKeys.clear()
     refreshDataMode()
   }
@@ -257,6 +267,7 @@ export const useInsightStore = defineStore('insight', () => {
     errorMessage,
     recommendationErrorMessage,
     weeklyReportErrorMessage,
+    lastErrorCode,
     dataMode,
     hasRecommendations,
     loadTodayStudy,

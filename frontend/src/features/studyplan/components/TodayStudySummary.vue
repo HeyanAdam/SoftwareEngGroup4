@@ -55,6 +55,7 @@ const percent = computed(() => progressPercent(props.summary))
 
 .summary__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -121,6 +122,11 @@ const percent = computed(() => progressPercent(props.summary))
 }
 
 @media (max-width: 600px) {
+  .summary__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .summary__stats {
     grid-template-columns: 1fr;
   }

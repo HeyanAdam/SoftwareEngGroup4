@@ -70,3 +70,19 @@ export function buildRecommendationQuery(query: RecommendationQuery): Record<str
   params.limit = query.limit ?? RECOMMENDATION_DEFAULT_LIMIT
   return params
 }
+
+/**
+ * 幂等键复用（契约 5.5）：同一推荐 id 的第二次尝试必须用第一次的键，
+ * 只有请求成功后才从缓存里删，避免失败重试创造第二个任务。
+ */
+export function resolveIdempotencyKey(
+  keys: Map<number, string>,
+  id: number,
+  create: () => string,
+): string {
+  const cached = keys.get(id)
+  if (cached) return cached
+  const created = create()
+  keys.set(id, created)
+  return created
+}

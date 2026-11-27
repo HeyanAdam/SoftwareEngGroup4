@@ -4,6 +4,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useInsightStore } from '../../../app/stores/insight'
 import {
   MOCK_WEEKLY_REPORT_EMPTY,
+  getStudyPlanMockScenario,
+  mockGenerateTodayPlan,
   mockTodayPlan,
   mockUpdateTaskStatus,
   resetStudyPlanMock,
@@ -177,6 +179,14 @@ describe('学习计划 Mock（契约 5.1 / 5.11）', () => {
       version: 3,
     })
   })
+
+  it('loading 场景可切换（骨架屏用），no-goal 场景生成计划返回 400 + 10000', async () => {
+    localStorage.setItem('kaoyan.insight.mock.scenario', 'loading')
+    expect(getStudyPlanMockScenario()).toBe('loading')
+
+    localStorage.setItem('kaoyan.insight.mock.scenario', 'no-goal')
+    await expect(mockGenerateTodayPlan()).rejects.toMatchObject({ code: 10000, httpStatus: 400 })
+  })
 })
 
 describe('Insight Store 学习计划流程', () => {
@@ -184,6 +194,7 @@ describe('Insight Store 学习计划流程', () => {
     resetStudyPlanMock()
     localStorage.setItem('kaoyan.insight.mock', 'on')
     localStorage.setItem('kaoyan.insight.mock.scenario', 'normal')
+    localStorage.removeItem('kaoyan.insight.mock.weekly')
     setActivePinia(createPinia())
   })
 
@@ -230,5 +241,65 @@ describe('Insight Store 学习计划流程', () => {
     expect(store.errorMessage).toBe('')
     expect(store.todayPlan?.tasks.length).toBeGreaterThanOrEqual(1)
     expect(store.todayPlan?.tasks.length).toBeLessThanOrEqual(3)
+  })
+
+  it('没有备考目标：生成计划 400 + 10000 显示可执行提示（契约 5.2 / 13.3）', async () => {
+    localStorage.setItem('kaoyan.insight.mock.scenario', 'no-goal')
+    const store = useInsightStore()
+    await store.loadTodayStudy()
+    expect(store.errorMessage).toBe('')
+
+    await store.generateTodayStudy()
+    expect(store.errorMessage).toBe('请先填写备考目标后再生成学习计划')
+    expect(store.todayPlan?.tasks).toEqual([])
+  })
+
+  it('服务端 500：任务回滚到提交前状态，不留下乐观更新（契约 9.2）', async () => {
+    const store = useInsightStore()
+    await store.loadTodayStudy()
+    localStorage.setItem('kaoyan.insight.mock.scenario', 'error')
+
+    await store.updateTaskStatus(502, 'COMPLETED')
+
+    const task = store.todayPlan?.tasks.find((item) => item.id === 502)
+    expect(task?.status).toBe('TODO')
+    expect(task?.version).toBe(2)
+    expect(task?.estimatedMinutes).toBe(30)
+    expect(store.submittingTaskIds).toEqual([])
+    expect(store.errorMessage).toBe('学习计划服务暂时不可用，请稍后重试')
+  })
+
+  it('周报未生成可以和今日任务共存（独立开关，reportId = null 不是错误）', async () => {
+    localStorage.setItem('kaoyan.insight.mock.weekly', 'empty')
+    const store = useInsightStore()
+    await store.loadTodayStudy()
+    await store.loadWeeklyReport()
+
+    expect(store.todayPlan?.tasks).toHaveLength(4)
+    expect(store.weeklyReport?.reportId).toBeNull()
+    expect(store.weeklyReportErrorMessage).toBe('')
+  })
+
+  it('403 + 10008：记下接口码，交给页面走既有无权限页（契约 9.1 / 11.4）', async () => {
+    localStorage.setItem('kaoyan.insight.mock.scenario', 'forbidden')
+    const store = useInsightStore()
+    await store.loadTodayStudy()
+
+    expect(store.lastErrorCode).toBe(10008)
+    expect(store.errorMessage).toBe('无接口权限')
+    expect(store.todayPlan).toBeNull()
+  })
+
+  it('推荐服务异常：只置推荐区错误，任务列表保持可用（契约 5.4 / 9.1）', async () => {
+    const store = useInsightStore()
+    await store.loadTodayStudy()
+    localStorage.setItem('kaoyan.insight.mock.scenario', 'error')
+
+    await store.loadRecommendations('TODAY', 'NONE')
+
+    expect(store.recommendationErrorMessage).toBe('推荐服务暂时不可用，请稍后重试')
+    expect(store.recommendations).toEqual([])
+    expect(store.todayPlan?.tasks).toHaveLength(4)
+    expect(store.errorMessage).toBe('')
   })
 })

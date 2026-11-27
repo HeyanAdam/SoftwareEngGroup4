@@ -86,6 +86,8 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
+import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
 import { PERMISSIONS } from '../../shared/constants/permissions'
 import { usePermission } from '../../shared/utils/permission'
 import { useInsightStore } from '../../app/stores/insight'
@@ -98,12 +100,16 @@ import WeeklyDiagnosisCard from './components/WeeklyDiagnosisCard.vue'
 import type { StudyTask } from './types'
 import { isPlanEmpty, nextToggleStatus } from './utils'
 
+/** 契约 8.1：403 缺少接口权限时的业务码 */
+const PERMISSION_DENIED_CODE = 10008
+
 /**
  * 学习计划页（前端 A）
  * 契约：5.1 今日计划、5.2 生成、5.3 任务状态、5.4 推荐、5.11 周报；状态处理 9.1 / 9.2。
  * 加载顺序：今日计划 → 推荐 → 周报；推荐与周报失败不阻塞任务列表。
  */
 const store = useInsightStore()
+const router = useRouter()
 const {
   todayPlan,
   weeklyReport,
@@ -128,6 +134,11 @@ const emptyPlan = computed(() => isPlanEmpty(todayPlan.value))
 
 onMounted(async () => {
   await store.loadTodayStudy()
+  // 契约 9.1：403 + 10008 走现有无权限页，不在页内伪装成普通错误
+  if (store.lastErrorCode === PERMISSION_DENIED_CODE) {
+    void router.push({ path: '/403', query: { code: String(PERMISSION_DENIED_CODE) } })
+    return
+  }
   void store.loadRecommendations('TODAY', 'NONE')
   void store.loadWeeklyReport()
 })
@@ -145,8 +156,10 @@ function handleToggle(task: StudyTask): void {
   void store.updateTaskStatus(task.id, nextToggleStatus(task.status))
 }
 
-function handleAccept(item: Recommendation): void {
-  void store.acceptRecommendation(item.id)
+/** 接受推荐：成功后提示“已加入今日任务”（契约指南 11 节）；失败由推荐区自行展示 */
+async function handleAccept(item: Recommendation): Promise<void> {
+  const accepted = await store.acceptRecommendation(item.id)
+  if (accepted) ElMessage.success('已加入今日任务')
 }
 
 function handleDismiss(item: Recommendation): void {

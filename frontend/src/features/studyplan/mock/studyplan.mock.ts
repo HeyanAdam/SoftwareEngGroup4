@@ -3,9 +3,12 @@
  *
  * 开关沿用 insight 层同一套，不新增开关：
  *   localStorage.setItem('kaoyan.insight.mock', 'on')
- *   localStorage.setItem('kaoyan.insight.mock.scenario', 'normal' | 'empty' | 'error')
+ *   localStorage.setItem('kaoyan.insight.mock.scenario', 'normal' | 'empty' | 'loading' | 'no-goal' | 'forbidden' | 'error')
+ *   - loading：今日计划延迟 3s 返回，用来看骨架屏
+ *   - no-goal：没有备考目标，今日计划为空，生成计划返回 400 + 10000
+ *   - forbidden：今日计划返回 403 + 10008，用来验证走既有 /403 页面
  * 只有 import.meta.env.DEV 为真且显式打开才生效。
- *
+ * 周报另有独立开关 'kaoyan.insight.mock.weekly' = 'empty'，用于“有任务但周报未生成”的场景。
  * 数据形状严格按契约 4.1 / 4.2 / 4.8 / 5.1，不额外造字段。
  */
 
@@ -16,8 +19,19 @@ import { sortTasks } from '../utils'
 /** 与推荐 Mock 共用的开关键，见 features/insight/mock/insight.mock.ts */
 export const STUDY_PLAN_MOCK_FLAG_KEY = 'kaoyan.insight.mock'
 export const STUDY_PLAN_MOCK_SCENARIO_KEY = 'kaoyan.insight.mock.scenario'
+/** 周报单独开关：只控周报是否已生成，不影响今日任务 */
+export const STUDY_PLAN_MOCK_WEEKLY_KEY = 'kaoyan.insight.mock.weekly'
+
+export type StudyPlanMockScenario =
+  | 'normal'
+  | 'empty'
+  | 'loading'
+  | 'no-goal'
+  | 'forbidden'
+  | 'error'
 
 const MOCK_DELAY = 160
+const MOCK_SLOW_DELAY = 3000
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -35,10 +49,23 @@ export function isStudyPlanMockEnabled(): boolean {
   return import.meta.env.DEV && readStorage(STUDY_PLAN_MOCK_FLAG_KEY) === 'on'
 }
 
-export function getStudyPlanMockScenario(): 'normal' | 'empty' | 'error' {
+export function getStudyPlanMockScenario(): StudyPlanMockScenario {
   const value = readStorage(STUDY_PLAN_MOCK_SCENARIO_KEY)
-  if (value === 'empty' || value === 'error') return value
+  if (
+    value === 'empty' ||
+    value === 'loading' ||
+    value === 'no-goal' ||
+    value === 'forbidden' ||
+    value === 'error'
+  ) {
+    return value
+  }
   return 'normal'
+}
+
+/** 周报是否按“未生成”返回（独立于今日计划的场景） */
+export function isWeeklyReportEmptyMock(): boolean {
+  return readStorage(STUDY_PLAN_MOCK_WEEKLY_KEY) === 'empty'
 }
 
 const MOCK_PLAN_DATE = '2026-11-26'
@@ -183,8 +210,14 @@ function clonePlan(plan: TodayStudyPlan): TodayStudyPlan {
 
 /** GET /study-plans/today */
 export async function mockTodayPlan(): Promise<TodayStudyPlan> {
-  await delay(MOCK_DELAY)
-  if (getStudyPlanMockScenario() === 'empty') {
+  const scenario = getStudyPlanMockScenario()
+  // loading 场景：故意慢 3 秒，用来看骨架屏
+  await delay(scenario === 'loading' ? MOCK_SLOW_DELAY : MOCK_DELAY)
+  // 价值：演示 403 + 10008，页面应走既有 /403（契约 9.1 / 11.4）
+  if (scenario === 'forbidden') {
+    throw new ApiError({ message: '无接口权限', code: 10008, httpStatus: 403 })
+  }
+  if (scenario === 'empty' || scenario === 'no-goal') {
     return clonePlan({ ...MOCK_EMPTY_PLAN, planDate: currentPlan.planDate })
   }
   return clonePlan(currentPlan)
@@ -193,7 +226,17 @@ export async function mockTodayPlan(): Promise<TodayStudyPlan> {
 /** POST /study-plans/today/generate：已有计划直接返回，不重复创建（契约 5.2） */
 export async function mockGenerateTodayPlan(): Promise<TodayStudyPlan> {
   await delay(MOCK_DELAY)
-  const emptyScenario = getStudyPlanMockScenario() === 'empty'
+  const scenario = getStudyPlanMockScenario()
+  // 没有有效备考目标（契约 5.2：400 + 10000）
+  if (scenario === 'no-goal') {
+    throw new ApiError({
+      message: '请先填写备考目标',
+      code: 10000,
+      httpStatus: 400,
+    })
+  }
+
+  const emptyScenario = scenario === 'empty'
   if (!emptyScenario && currentPlan.planId !== 0 && currentPlan.tasks.length > 0) {
     return clonePlan(currentPlan)
   }
@@ -267,8 +310,13 @@ export async function mockUpdateTaskStatus(
 /** GET /study-reports/weekly/current */
 export async function mockWeeklyReport(): Promise<WeeklyStudyReportSummary> {
   await delay(MOCK_DELAY)
-  if (getStudyPlanMockScenario() === 'empty') {
+  // 场景 empty 或独立周报开关为 empty 时返回“未生成”，可演示“有任务但周报未生成”
+  if (getStudyPlanMockScenario() === 'empty' || isWeeklyReportEmptyMock()) {
     return { ...MOCK_WEEKLY_REPORT_EMPTY, weakSubjects: [], nextActions: [] }
   }
-  return { ...MOCK_WEEKLY_REPORT, weakSubjects: [...MOCK_WEEKLY_REPORT.weakSubjects], nextActions: [...MOCK_WEEKLY_REPORT.nextActions] }
+  return {
+    ...MOCK_WEEKLY_REPORT,
+    weakSubjects: [...MOCK_WEEKLY_REPORT.weakSubjects],
+    nextActions: [...MOCK_WEEKLY_REPORT.nextActions],
+  }
 }
