@@ -20,12 +20,12 @@
         type="primary"
         size="small"
         :loading="accepting"
-        :disabled="disabled || accepting"
+        :disabled="actionsDisabled"
         @click="handlePrimary"
       >
         {{ item.actionLabel }}
       </el-button>
-      <el-button size="small" :disabled="disabled || accepting" @click="emit('dismiss', item)">
+      <el-button size="small" :disabled="actionsDisabled" @click="emit('dismiss', item)">
         暂不需要
       </el-button>
     </div>
@@ -34,6 +34,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { PERMISSIONS } from '../../../shared/constants/permissions'
+import { usePermission } from '../../../shared/utils/permission'
 import type { Recommendation } from '../types'
 import { isSafeActionPath, RECOMMENDATION_SCENE_LABELS } from '../utils'
 
@@ -57,6 +59,13 @@ const emit = defineEmits<{
 
 const sourceLabel = computed(() => RECOMMENDATION_SCENE_LABELS[props.item.scene])
 
+/** 契约 2.3：没有 recommendation:update 时按钮禁用，前端显隐不能替代后端鉴权 */
+const { hasPermission } = usePermission()
+const canUpdate = computed(() => hasPermission(PERMISSIONS.RECOMMENDATION_UPDATE))
+
+/** 提交中、外部禁用、无更新权限，三种情况都不允许再点 */
+const actionsDisabled = computed(() => props.disabled || props.accepting || !canUpdate.value)
+
 /**
  * 主按钮行为由 actionType 决定（契约 3.5）：
  * CREATE_TASK → 走接受推荐接口；OPEN_CHAT / OPEN_RESOURCE → 交给页面跳转。
@@ -64,12 +73,12 @@ const sourceLabel = computed(() => RECOMMENDATION_SCENE_LABELS[props.item.scene]
  */
 const primaryDisabled = computed(
   () =>
-    props.disabled ||
+    actionsDisabled.value ||
     (props.item.actionType !== 'CREATE_TASK' && !isSafeActionPath(props.item.actionPath)),
 )
 
 function handlePrimary(): void {
-  if (props.disabled || props.accepting || primaryDisabled.value) return
+  if (primaryDisabled.value) return
   if (props.item.actionType === 'CREATE_TASK') {
     emit('accept', props.item)
     return
@@ -153,6 +162,13 @@ function handlePrimary(): void {
 @media (max-width: 600px) {
   .rec-card__actions {
     flex-wrap: wrap;
+  }
+
+  /* 窄屏两个按钮各占一行，避免把卡片撑出横向滚动 */
+  .rec-card__actions :deep(.el-button) {
+    flex: 1 1 100%;
+    margin-left: 0;
+    min-width: 0;
   }
 }
 </style>

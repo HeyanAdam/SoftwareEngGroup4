@@ -72,11 +72,15 @@ const MOCK_STUDENT: CurrentUser = {
     PERMISSIONS.STUDY_PLAN_CREATE,
     PERMISSIONS.STUDY_PLAN_UPDATE,
     PERMISSIONS.STUDY_TASK_UPDATE,
+    PERMISSIONS.RECOMMENDATION_VIEW,
+    PERMISSIONS.RECOMMENDATION_UPDATE,
+    PERMISSIONS.NOTIFICATION_VIEW,
+    PERMISSIONS.NOTIFICATION_UPDATE,
   ],
   has_profile: false,
 }
 
-/** Mock 管理员账号（拥有全部 20 条权限码） */
+/** Mock 管理员账号（拥有全部 24 条权限码） */
 const MOCK_ADMIN: CurrentUser = {
   user_id: 9999,
   username: 'admin',
