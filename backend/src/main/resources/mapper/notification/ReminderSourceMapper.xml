@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.notification.mapper.ReminderSourceMapper">
+
+    <resultMap id="DailyPlanSourceMap"
+               type="com.group4.kaoyan.modules.notification.dto.DailyPlanReminderSource">
+        <result column="user_id" property="userId"/>
+        <result column="plan_id" property="planId"/>
+        <result column="plan_date" property="planDate"/>
+        <result column="task_count" property="taskCount"/>
+        <result column="estimated_minutes" property="estimatedMinutes"/>
+    </resultMap>
+
+    <resultMap id="TaskSourceMap"
+               type="com.group4.kaoyan.modules.notification.dto.TaskReminderSource">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="title" property="title"/>
+        <result column="due_at" property="dueAt"/>
+    </resultMap>
+
+    <resultMap id="ExamSourceMap"
+               type="com.group4.kaoyan.modules.notification.dto.ExamReminderSource">
+        <result column="user_id" property="userId"/>
+        <result column="exam_date" property="examDate"/>
+    </resultMap>
+
+    <select id="selectDailyPlanSources" resultMap="DailyPlanSourceMap">
+        SELECT sp.user_id,
+               sp.id AS plan_id,
+               sp.plan_date,
+               COUNT(st.id) AS task_count,
+               COALESCE(SUM(st.estimated_minutes), 0) AS estimated_minutes
+        FROM study_plan sp
+        JOIN study_task st
+          ON st.plan_id = sp.id
+         AND st.deleted = 0
+         AND st.status IN ('TODO', 'IN_PROGRESS')
+        WHERE sp.plan_date = #{planDate}
+          AND sp.status = 'ACTIVE'
+        GROUP BY sp.user_id, sp.id, sp.plan_date
+        ORDER BY sp.user_id
+    </select>
+
+    <select id="selectDueTaskSources" resultMap="TaskSourceMap">
+        SELECT id, user_id, title, due_at
+        FROM study_task
+        WHERE status IN ('TODO', 'IN_PROGRESS')
+          AND deleted = 0
+          AND due_at &gt; #{now}
+          AND due_at &lt;= DATE_ADD(#{now}, INTERVAL 30 MINUTE)
+        ORDER BY due_at ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectOverdueTaskSources" resultMap="TaskSourceMap">
+        SELECT id, user_id, title, due_at
+        FROM study_task
+        WHERE status IN ('TODO', 'IN_PROGRESS')
+          AND deleted = 0
+          AND due_at IS NOT NULL
+          AND due_at &lt; #{now}
+        ORDER BY due_at ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectExamSources" resultMap="ExamSourceMap">
+        SELECT user_id, exam_date
+        FROM user_study_goal
+        WHERE status = 1
+          AND deleted = 0
+          AND exam_date IS NOT NULL
+          AND exam_date &gt;= #{today}
+        ORDER BY exam_date ASC, user_id ASC
+    </select>
+</mapper>
