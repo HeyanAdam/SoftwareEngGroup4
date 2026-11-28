@@ -2,6 +2,7 @@ package com.group4.kaoyan.modules.studyplan.service;
 
 import com.group4.kaoyan.common.BizException;
 import com.group4.kaoyan.common.ErrorCode;
+import com.group4.kaoyan.modules.chat.service.ChatService;
 import com.group4.kaoyan.modules.recommendation.engine.RecommendationEngine;
 import com.group4.kaoyan.modules.recommendation.mapper.RecommendationMapper;
 import com.group4.kaoyan.modules.studyplan.dto.StudyTaskUpdateRequest;
@@ -10,6 +11,7 @@ import com.group4.kaoyan.modules.studyplan.dto.StudyTaskWriteRequest;
 import com.group4.kaoyan.modules.studyplan.entity.StudyPlan;
 import com.group4.kaoyan.modules.studyplan.entity.StudyTask;
 import com.group4.kaoyan.modules.studyplan.mapper.StudyTaskMapper;
+import com.group4.kaoyan.modules.user.mapper.UserProfileMapper;
 import com.group4.kaoyan.platform.realtime.delivery.RealtimeDeliveryPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -43,6 +45,8 @@ class StudyTaskServiceTest {
     private RecommendationEngine recommendationEngine;
     private RealtimeDeliveryPort delivery;
     private StudyPlanService studyPlanService;
+    private ChatService chatService;
+    private UserProfileMapper userProfileMapper;
     private Clock clock;
     private StudyTaskService service;
 
@@ -57,9 +61,12 @@ class StudyTaskServiceTest {
         recommendationMapper = mock(RecommendationMapper.class);
         delivery = mock(RealtimeDeliveryPort.class);
         studyPlanService = mock(StudyPlanService.class);
+        chatService = mock(ChatService.class);
+        userProfileMapper = mock(UserProfileMapper.class);
         clock = Clock.fixed(NOW.toInstant(ZoneOffset.ofHours(8)), ZoneOffset.ofHours(8));
         // engine 用真实实例,依赖被 mock
-        recommendationEngine = new RecommendationEngine(engineTaskMapper, clock);
+        recommendationEngine = new RecommendationEngine(
+                engineTaskMapper, chatService, userProfileMapper, clock);
         // engine 内部查询默认返回空,避免 NPE
         when(engineTaskMapper.selectById(anyLong())).thenReturn(null);
         when(engineTaskMapper.selectByPlanId(anyLong())).thenReturn(Collections.emptyList());
@@ -132,6 +139,21 @@ class StudyTaskServiceTest {
 
         service.updateStatus(USER_ID, 1L, new StudyTaskUpdateRequest("IN_PROGRESS", 0));
 
+        verify(engineTaskMapper, never()).selectById(anyLong());
+    }
+
+    @Test
+    @DisplayName("COMPLETED→TODO 重新打开:version+1,不触发推荐生成")
+    void reopenCompletedTaskDoesNotTriggerRecommendation() {
+        StudyTask task = task(1L, USER_ID, "COMPLETED", 3);
+        StudyTask updated = task(1L, USER_ID, "TODO", 4);
+        when(studyTaskMapper.selectById(1L)).thenReturn(task).thenReturn(updated);
+        when(studyTaskMapper.updateWithVersion(task, 3)).thenReturn(1);
+
+        StudyTaskVO vo = service.updateStatus(USER_ID, 1L, new StudyTaskUpdateRequest("TODO", 3));
+
+        assertEquals("TODO", vo.status());
+        assertEquals(4, vo.version());
         verify(engineTaskMapper, never()).selectById(anyLong());
     }
 

@@ -2,6 +2,8 @@ package com.group4.kaoyan.modules.recommendation.service;
 
 import com.group4.kaoyan.common.BizException;
 import com.group4.kaoyan.common.ErrorCode;
+import com.group4.kaoyan.modules.chat.entity.ChatMessage;
+import com.group4.kaoyan.modules.chat.service.ChatService;
 import com.group4.kaoyan.modules.recommendation.dto.*;
 import com.group4.kaoyan.modules.recommendation.engine.RecommendationEngine;
 import com.group4.kaoyan.modules.recommendation.entity.UserRecommendation;
@@ -10,9 +12,11 @@ import com.group4.kaoyan.modules.studyplan.entity.StudyTask;
 import com.group4.kaoyan.modules.studyplan.entity.StudyPlan;
 import com.group4.kaoyan.modules.studyplan.mapper.StudyTaskMapper;
 import com.group4.kaoyan.modules.studyplan.service.StudyPlanService;
+import com.group4.kaoyan.modules.user.mapper.UserProfileMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -40,6 +44,8 @@ class RecommendationServiceTest {
     private StudyTaskMapper engineTaskMapper;      // engine 内部查询用
     private RecommendationEngine recommendationEngine;
     private StudyPlanService studyPlanService;
+    private ChatService chatService;
+    private UserProfileMapper userProfileMapper;
     private Clock clock;
     private RecommendationService service;
 
@@ -55,12 +61,16 @@ class RecommendationServiceTest {
         engineTaskMapper = mock(StudyTaskMapper.class);
         clock = Clock.fixed(NOW.toInstant(ZoneOffset.ofHours(8)), ZoneOffset.ofHours(8));
         studyPlanService = mock(StudyPlanService.class);
+        chatService = mock(ChatService.class);
+        userProfileMapper = mock(UserProfileMapper.class);
         StudyPlan plan = new StudyPlan();
         plan.setId(900L);
         when(studyPlanService.ensureTodayPlan(USER_ID)).thenReturn(plan);
-        recommendationEngine = new RecommendationEngine(engineTaskMapper, clock);
+        recommendationEngine = new RecommendationEngine(
+                engineTaskMapper, chatService, userProfileMapper, clock);
         service = new RecommendationService(
-                recommendationMapper, recommendationEngine, serviceTaskMapper, studyPlanService, clock);
+                recommendationMapper, recommendationEngine, serviceTaskMapper,
+                studyPlanService, chatService, clock);
 
         // engine 默认查询空
         when(engineTaskMapper.selectById(anyLong())).thenReturn(null);
@@ -155,6 +165,108 @@ class RecommendationServiceTest {
         assertEquals(1, vo.items().size());
         assertEquals(10L, vo.items().get(0).id());
         verify(recommendationMapper, atLeast(1)).insert(any(UserRecommendation.class));
+    }
+
+    @Test
+    @DisplayName("list:生成时唯一键冲突 → 忽略重复插入,用已有数据返回")
+    void listIgnoresDuplicateInsert() {
+        StudyTask overdueTask = new StudyTask();
+        overdueTask.setId(50L);
+        overdueTask.setUserId(USER_ID);
+        overdueTask.setStatus("TODO");
+        overdueTask.setPriority(50);
+        overdueTask.setSubject("数学");
+        overdueTask.setDueAt(TODAY.minusDays(1).atTime(23, 59));
+        when(engineTaskMapper.selectByUserAndDate(eq(USER_ID), eq(TODAY)))
+                .thenReturn(List.of(overdueTask));
+        when(recommendationMapper.insert(any(UserRecommendation.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate dedup_key"));
+        when(recommendationMapper.selectActiveByUserScene(anyLong(), anyString(), any()))
+                .thenReturn(Collections.emptyList())
+                .thenReturn(List.of(rec(10L, "ACTIVE", new BigDecimal("0.95"))));
+
+        RecommendationListVO vo = service.list(USER_ID, "TODAY", "NONE", null, null);
+
+        assertEquals(1, vo.items().size(), "重复插入不应让整个查询失败");
+        assertEquals(10L, vo.items().get(0).id());
+    }
+
+    // ===== list 上下文归属 =====
+
+    @Test
+    @DisplayName("list:CHAT 消息命中科目 → 生成同科任务推荐,dedupKey 带 SUBJECT")
+    void listChatMatchesSubjectTask() {
+        ChatMessage message = new ChatMessage();
+        message.setId(88L);
+        message.setUserId(USER_ID);
+        message.setRole("user");
+        message.setContent("高数极限怎么求?");
+        when(chatService.findMessage(88L)).thenReturn(message);
+
+        StudyTask mathTask = new StudyTask();
+        mathTask.setId(99L);
+        mathTask.setUserId(USER_ID);
+        mathTask.setStatus("TODO");
+        mathTask.setSubject("数学");
+        mathTask.setTitle("数学基础复习");
+        when(engineTaskMapper.selectByUserAndDate(eq(USER_ID), eq(TODAY)))
+                .thenReturn(List.of(mathTask));
+        when(recommendationMapper.selectActiveByUserScene(anyLong(), anyString(), any()))
+                .thenReturn(Collections.emptyList())
+                .thenReturn(List.of(rec(20L, "ACTIVE", new BigDecimal("0.85"))));
+
+        RecommendationListVO vo = service.list(USER_ID, "CHAT", "MESSAGE", 88L, null);
+
+        assertEquals(1, vo.items().size());
+        verify(recommendationMapper).insert(argThat(r ->
+                r.getDedupKey().contains("SUBJECT:99") && Long.valueOf(88L).equals(r.getContextId())));
+    }
+
+    @Test
+    @DisplayName("list:上下文消息不存在 → 404")
+    void listRejectsMissingContextMessage() {
+        when(chatService.findMessage(88L)).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.list(USER_ID, "CHAT", "MESSAGE", 88L, null));
+        assertEquals(404, e.getCode());
+    }
+
+    @Test
+    @DisplayName("list:他人上下文消息 → 10009")
+    void listRejectsOtherUserContextMessage() {
+        ChatMessage message = new ChatMessage();
+        message.setId(88L);
+        message.setUserId(OTHER_USER);
+        message.setContent("高数极限怎么求?");
+        when(chatService.findMessage(88L)).thenReturn(message);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.list(USER_ID, "CHAT", "MESSAGE", 88L, null));
+        assertEquals(ErrorCode.NO_DATA_ACCESS, e.getCode());
+    }
+
+    @Test
+    @DisplayName("list:他人上下文任务 → 10009")
+    void listRejectsOtherUserContextTask() {
+        StudyTask task = new StudyTask();
+        task.setId(77L);
+        task.setUserId(OTHER_USER);
+        when(serviceTaskMapper.selectById(77L)).thenReturn(task);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.list(USER_ID, "TASK_COMPLETE", "TASK", 77L, null));
+        assertEquals(ErrorCode.NO_DATA_ACCESS, e.getCode());
+    }
+
+    @Test
+    @DisplayName("list:上下文任务不存在 → 404")
+    void listRejectsMissingContextTask() {
+        when(serviceTaskMapper.selectById(77L)).thenReturn(null);
+
+        BizException e = assertThrows(BizException.class,
+                () -> service.list(USER_ID, "TASK_COMPLETE", "TASK", 77L, null));
+        assertEquals(404, e.getCode());
     }
 
     // ===== accept =====

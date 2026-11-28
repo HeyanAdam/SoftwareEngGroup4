@@ -1,13 +1,17 @@
 perm_code,perm_name,module,api_paths,SYSTEM_ADMIN,STUDENT,CONTENT_OPERATOR,DATA_AUDITOR,source,remark
-study-plan:view,查看学习计划,督学陪伴,"GET /api/v1/study-plans;GET /api/v1/study-plans/{plan_id};GET /api/v1/study-plans/today",1,0,0,0,启动补齐,学生建议授权待评审
-study-plan:create,生成学习计划,督学陪伴,POST /api/v1/study-plans,1,0,0,0,启动补齐,学生建议授权待评审
-study-plan:update,调整学习计划,督学陪伴,POST /api/v1/study-plans/{plan_id}/adjust,1,0,0,0,启动补齐,学生建议授权待评审
-study-task:update,更新任务状态,督学陪伴,PATCH /api/v1/study-tasks/{task_id},1,0,0,0,启动补齐,学生建议授权待评审
+study-plan:view,查看学习计划,督学陪伴,GET /api/v1/study-plans/today,1,1,0,0,V9已有,
+study-plan:create,生成学习计划,督学陪伴,"POST /api/v1/study-plans/today/generate;POST /api/v1/study-tasks",1,1,0,0,V9已有,生成今日计划与手工添加任务
+study-plan:update,调整学习计划,督学陪伴,,1,1,0,0,启动补齐,接口预留；当前调整走 study-task:update
+study-task:update,更新任务状态,督学陪伴,"PATCH /api/v1/study-tasks/{id};PUT /api/v1/study-tasks/{id};DELETE /api/v1/study-tasks/{id}",1,1,0,0,V9已有,
+recommendation:view,查看导学推荐,督学陪伴,GET /api/v1/recommendations,1,1,0,0,V14已有,
+recommendation:update,接受或忽略推荐,督学陪伴,"POST /api/v1/recommendations/{id}/accept;POST /api/v1/recommendations/{id}/dismiss",1,1,0,0,V14已有,
+notification:view,查看通知,督学陪伴,"GET /api/v1/notifications;GET /api/v1/notifications/unread-count",1,1,0,0,V14已有,后端 B 接口
+notification:update,更新通知状态,督学陪伴,"PUT /api/v1/notifications/{id}/read;PUT /api/v1/notifications/read-all",1,1,0,0,V14已有,后端 B 接口
 question:view,浏览题库,刷题训练,"GET /api/v1/questions;GET /api/v1/questions/{question_id};GET /api/v1/questions/random",1,0,0,0,启动补齐,学生建议授权待评审
-file:view,文件列表,文件存储,GET /api/v1/files,1,0,0,0,启动补齐,学生与内容运营建议授权待评审
-file:upload,上传文件,文件存储,"POST /api/v1/files/batch;POST /api/v1/files/upload-sessions",1,0,0,0,启动补齐,学生建议授权待评审
-file:download,下载文件,文件存储,GET /api/v1/files/{file_id}/content,1,0,0,0,启动补齐,学生建议授权待评审
-file:delete,删除文件,文件存储,DELETE /api/v1/files/{file_id},1,0,0,0,启动补齐,学生建议授权待评审
+file:view,文件列表,文件存储,GET /api/v1/files,1,1,0,0,V8已有,
+file:upload,上传文件,文件存储,"POST /api/v1/files/batch;POST /api/v1/files/upload-sessions",1,1,0,0,V8已有,
+file:download,下载文件,文件存储,GET /api/v1/files/{file_id}/content,1,1,0,0,V8已有,
+file:delete,删除文件,文件存储,DELETE /api/v1/files/{file_id},1,1,0,0,V8已有,
 kb:view,查看知识库,知识库,"GET /api/v1/knowledge-bases;GET /api/v1/knowledge-bases/{kb_id};GET /api/v1/knowledge-bases/{kb_id}/documents;GET /api/v1/knowledge-documents/{document_id}",1,0,1,1,V6已有,学生不得直接浏览知识库
 kb:create,创建知识库,知识库,POST /api/v1/knowledge-bases,1,0,1,0,V6已有,
 kb:delete,删除知识库,知识库,DELETE /api/v1/knowledge-bases/{kb_id},1,0,1,0,V6已有,
