@@ -23,8 +23,20 @@ public interface StudyTaskMapper {
     int insert(StudyTask task);
 
     /**
+     * 编辑任务内容（不修改状态）。必须匹配 userId + version。
+     */
+    int updateDetailsWithVersion(StudyTask task, @Param("expectedVersion") int expectedVersion);
+
+    /**
      * 条件 UPDATE: 必须匹配 userId + version,version 不匹配则影响 0 行。
      * 成功后 version = version + 1。
      */
     int updateWithVersion(StudyTask task, @Param("expectedVersion") int expectedVersion);
+
+    /**
+     * 逻辑删除。必须匹配 userId + version，避免删除刚被其他页面修改的任务。
+     */
+    int logicDelete(@Param("id") Long id,
+                    @Param("userId") Long userId,
+                    @Param("expectedVersion") int expectedVersion);
 }

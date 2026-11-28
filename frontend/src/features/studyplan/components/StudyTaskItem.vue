@@ -24,6 +24,11 @@
         <span v-if="dueText" class="task-item__hint">截止 {{ dueText }}</span>
       </div>
     </div>
+
+    <div v-if="editable" class="task-item__actions">
+      <el-button link type="primary" size="small" @click="emit('edit', task)">编辑</el-button>
+      <el-button link type="danger" size="small" @click="emit('remove', task)">删除</el-button>
+    </div>
   </div>
 </template>
 
@@ -39,14 +44,18 @@ import { formatTaskTime, TASK_STATUS_LABELS } from '../utils'
 interface Props {
   task: StudyTask
   submitting?: boolean
+  editable?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   submitting: false,
+  editable: false,
 })
 
 const emit = defineEmits<{
   toggle: [task: StudyTask]
+  edit: [task: StudyTask]
+  remove: [task: StudyTask]
 }>()
 
 const dueText = computed(() => formatTaskTime(props.task.dueAt))
@@ -138,6 +147,13 @@ const dueText = computed(() => formatTaskTime(props.task.dueAt))
   font-size: 11px;
 }
 
+.task-item__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
 .task-item__tag {
   padding: 0 6px;
   border-radius: 4px;
@@ -157,6 +173,10 @@ const dueText = computed(() => formatTaskTime(props.task.dueAt))
   .task-item__title {
     white-space: normal;
     word-break: break-word;
+  }
+
+  .task-item__actions {
+    align-self: flex-end;
   }
 }
 </style>

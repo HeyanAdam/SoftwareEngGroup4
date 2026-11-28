@@ -34,6 +34,7 @@ public class RecommendationService {
     private final RecommendationMapper recommendationMapper;
     private final RecommendationEngine recommendationEngine;
     private final StudyTaskMapper studyTaskMapper;
+    private final StudyPlanService studyPlanService;
     private final Clock studyClock;
 
     private static final List<String> VALID_SCENES = List.of("TODAY", "CHAT", "TASK_COMPLETE");
@@ -44,14 +45,15 @@ public class RecommendationService {
      */
     public RecommendationListVO list(Long userId, String scene, String contextType,
                                       Long contextId, Integer limit) {
+        String normalizedContextType = contextType == null ? "NONE" : contextType;
         // 参数校验
         if (!VALID_SCENES.contains(scene)) {
             throw new BizException(ErrorCode.PARAM_INVALID, "scene 必须是 TODAY / CHAT / TASK_COMPLETE 之一");
         }
-        if (contextType != null && !VALID_CONTEXTS.contains(contextType)) {
+        if (!VALID_CONTEXTS.contains(normalizedContextType)) {
             throw new BizException(ErrorCode.PARAM_INVALID, "contextType 不合法");
         }
-        if (!"NONE".equals(contextType) && contextId == null) {
+        if (!"NONE".equals(normalizedContextType) && contextId == null) {
             throw new BizException(ErrorCode.PARAM_INVALID, "contextType 非 NONE 时 contextId 必填");
         }
         int realLimit = (limit == null ? 3 : Math.min(limit, 10));
@@ -123,7 +125,7 @@ public class RecommendationService {
 
         // 创建任务
         StudyTask task = new StudyTask();
-        task.setPlanId(0L); // 推荐接受创建的任务暂时无 plan
+        task.setPlanId(studyPlanService.ensureTodayPlan(userId).getId());
         task.setUserId(userId);
         task.setPlanDate(LocalDate.now(studyClock));
         task.setTitle(rec.getTitle());

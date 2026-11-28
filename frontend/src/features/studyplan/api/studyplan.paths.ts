@@ -6,6 +6,7 @@
 export const STUDY_PLAN_PATHS = {
   today: '/study-plans/today',
   generateToday: '/study-plans/today/generate',
+  tasks: '/study-tasks',
   task: (id: number) => `/study-tasks/${id}`,
   weeklyReport: '/study-reports/weekly/current',
 } as const

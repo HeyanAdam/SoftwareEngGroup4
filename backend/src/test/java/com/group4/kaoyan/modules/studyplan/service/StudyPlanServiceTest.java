@@ -9,6 +9,7 @@ import com.group4.kaoyan.modules.studyplan.entity.StudyTask;
 import com.group4.kaoyan.modules.studyplan.mapper.StudyPlanMapper;
 import com.group4.kaoyan.modules.studyplan.mapper.StudyTaskMapper;
 import com.group4.kaoyan.modules.user.entity.UserStudyGoal;
+import com.group4.kaoyan.modules.user.mapper.UserProfileMapper;
 import com.group4.kaoyan.modules.user.mapper.UserStudyGoalMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
+import org.mockito.stubbing.Answer;
 
 /**
  * 学习计划 Service 单元测试。纯 Mockito,不依赖 Spring/数据库。
@@ -36,6 +38,7 @@ class StudyPlanServiceTest {
     private StudyPlanMapper studyPlanMapper;
     private StudyTaskMapper studyTaskMapper;
     private UserStudyGoalMapper userStudyGoalMapper;
+    private UserProfileMapper userProfileMapper;
     private Clock clock;
     private StudyPlanService service;
 
@@ -48,9 +51,11 @@ class StudyPlanServiceTest {
         studyPlanMapper = mock(StudyPlanMapper.class);
         studyTaskMapper = mock(StudyTaskMapper.class);
         userStudyGoalMapper = mock(UserStudyGoalMapper.class);
+        userProfileMapper = mock(UserProfileMapper.class);
         // 固定 Clock 到 2026-11-26 10:00 +08:00
         clock = Clock.fixed(NOW.toInstant(ZoneOffset.ofHours(8)), ZoneOffset.ofHours(8));
-        service = new StudyPlanService(studyPlanMapper, studyTaskMapper, userStudyGoalMapper, clock);
+        service = new StudyPlanService(
+                studyPlanMapper, studyTaskMapper, userStudyGoalMapper, userProfileMapper, clock);
     }
 
     @Test
@@ -104,7 +109,8 @@ class StudyPlanServiceTest {
         StudyTask overdueTask = task(1L, "TODO", TODAY.minusDays(1).atTime(23, 59), 30, null);
         StudyTask completedTask = task(2L, "COMPLETED", TODAY.minusDays(1).atTime(23, 59), 40, NOW.minusHours(1));
         StudyTask inProgress = task(3L, "IN_PROGRESS", TODAY.plusDays(1).atTime(23, 59), 20, null);
-        when(studyTaskMapper.selectByPlanId(100L)).thenReturn(List.of(overdueTask, completedTask, inProgress));
+        when(studyTaskMapper.selectByUserAndDate(USER_ID, TODAY))
+                .thenReturn(List.of(overdueTask, completedTask, inProgress));
 
         StudyPlanVO vo = service.today(USER_ID);
 
@@ -128,7 +134,7 @@ class StudyPlanServiceTest {
         StudyTask t2 = task(2L, "COMPLETED", null, 40, NOW);
         StudyTask t3 = task(3L, "IN_PROGRESS", null, 25, null);
         StudyTask t4 = task(4L, "CANCELLED", null, 50, null);
-        when(studyTaskMapper.selectByPlanId(200L)).thenReturn(List.of(t1, t2, t3, t4));
+        when(studyTaskMapper.selectByUserAndDate(USER_ID, TODAY)).thenReturn(List.of(t1, t2, t3, t4));
 
         StudyPlanVO vo = service.today(USER_ID);
 
@@ -150,8 +156,8 @@ class StudyPlanServiceTest {
     }
 
     @Test
-    @DisplayName("generate:已有今日计划 → 不重复创建,直接返回已有")
-    void generateReturnsExistingPlanWithoutDuplicate() {
+    @DisplayName("generate:已有空计划 → 复用计划并补生成任务")
+    void generateFillsExistingEmptyPlan() {
         UserStudyGoal goal = new UserStudyGoal();
         goal.setTargetSchoolName("测试大学");
         goal.setTargetMajor("计算机");
@@ -164,13 +170,13 @@ class StudyPlanServiceTest {
         existing.setPlanDate(TODAY);
         existing.setTitle("已有计划");
         when(studyPlanMapper.selectByUserAndDate(USER_ID, TODAY)).thenReturn(existing);
-        when(studyTaskMapper.selectByPlanId(300L)).thenReturn(Collections.emptyList());
+        when(studyTaskMapper.selectByUserAndDate(USER_ID, TODAY)).thenReturn(Collections.emptyList());
 
         StudyPlanVO vo = service.generate(USER_ID);
 
         assertEquals(300L, vo.planId());
         verify(studyPlanMapper, never()).insert(any());
-        verify(studyTaskMapper, never()).insert(any());
+        verify(studyTaskMapper, atLeast(1)).insert(any());
     }
 
     @Test
@@ -183,8 +189,12 @@ class StudyPlanServiceTest {
         goal.setTargetSubjectScores("{\"english\":70,\"math\":110}");
         when(userStudyGoalMapper.selectByUserId(USER_ID, 1)).thenReturn(List.of(goal));
         when(studyPlanMapper.selectByUserAndDate(USER_ID, TODAY)).thenReturn(null);
+        doAnswer((Answer<Void>) invocation -> {
+            StudyPlan inserted = invocation.getArgument(0);
+            inserted.setId(400L);
+            return null;
+        }).when(studyPlanMapper).insert(any(StudyPlan.class));
 
-        // 第一次查无计划,insert 后重查返回新建的
         StudyPlan created = new StudyPlan();
         created.setId(400L);
         created.setUserId(USER_ID);
@@ -193,7 +203,7 @@ class StudyPlanServiceTest {
         when(studyPlanMapper.selectByUserAndDate(USER_ID, TODAY))
                 .thenReturn(null)
                 .thenReturn(created);
-        when(studyTaskMapper.selectByPlanId(400L)).thenReturn(Collections.emptyList());
+        when(studyTaskMapper.selectByUserAndDate(USER_ID, TODAY)).thenReturn(Collections.emptyList());
 
         StudyPlanVO vo = service.generate(USER_ID);
 

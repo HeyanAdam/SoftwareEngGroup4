@@ -122,6 +122,11 @@ const routes: RouteRecordRaw[] = [
         meta: { permission: ['study-plan:view', 'study-plan:create'] },
       },
       {
+        path: 'settings',
+        name: 'StudySettings',
+        component: () => import('../../features/settings/StudySettingsPage.vue'),
+      },
+      {
         path: 'files',
         name: 'File',
         component: () => import('../../features/file/FilePage.vue'),

@@ -7,7 +7,9 @@ import com.group4.kaoyan.modules.recommendation.engine.RecommendationEngine;
 import com.group4.kaoyan.modules.recommendation.entity.UserRecommendation;
 import com.group4.kaoyan.modules.recommendation.mapper.RecommendationMapper;
 import com.group4.kaoyan.modules.studyplan.entity.StudyTask;
+import com.group4.kaoyan.modules.studyplan.entity.StudyPlan;
 import com.group4.kaoyan.modules.studyplan.mapper.StudyTaskMapper;
+import com.group4.kaoyan.modules.studyplan.service.StudyPlanService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,6 +39,7 @@ class RecommendationServiceTest {
     private StudyTaskMapper serviceTaskMapper;     // accept 时建任务用
     private StudyTaskMapper engineTaskMapper;      // engine 内部查询用
     private RecommendationEngine recommendationEngine;
+    private StudyPlanService studyPlanService;
     private Clock clock;
     private RecommendationService service;
 
@@ -51,8 +54,13 @@ class RecommendationServiceTest {
         serviceTaskMapper = mock(StudyTaskMapper.class);
         engineTaskMapper = mock(StudyTaskMapper.class);
         clock = Clock.fixed(NOW.toInstant(ZoneOffset.ofHours(8)), ZoneOffset.ofHours(8));
+        studyPlanService = mock(StudyPlanService.class);
+        StudyPlan plan = new StudyPlan();
+        plan.setId(900L);
+        when(studyPlanService.ensureTodayPlan(USER_ID)).thenReturn(plan);
         recommendationEngine = new RecommendationEngine(engineTaskMapper, clock);
-        service = new RecommendationService(recommendationMapper, recommendationEngine, serviceTaskMapper, clock);
+        service = new RecommendationService(
+                recommendationMapper, recommendationEngine, serviceTaskMapper, studyPlanService, clock);
 
         // engine 默认查询空
         when(engineTaskMapper.selectById(anyLong())).thenReturn(null);
@@ -76,6 +84,18 @@ class RecommendationServiceTest {
         BizException e = assertThrows(BizException.class,
                 () -> service.list(USER_ID, "TASK_COMPLETE", "TASK", null, null));
         assertEquals(ErrorCode.PARAM_INVALID, e.getCode());
+    }
+
+    @Test
+    @DisplayName("list:TODAY 不传 contextType 时按 NONE 处理")
+    void listAcceptsMissingContextTypeForToday() {
+        when(recommendationMapper.selectActiveByUserScene(USER_ID, "TODAY", NOW))
+                .thenReturn(Collections.emptyList())
+                .thenReturn(List.of(rec(1L, "ACTIVE", new BigDecimal("0.90"))));
+
+        RecommendationListVO result = service.list(USER_ID, "TODAY", null, null, 3);
+
+        assertEquals(1, result.items().size());
     }
 
     // ===== list 缓存与排序 =====

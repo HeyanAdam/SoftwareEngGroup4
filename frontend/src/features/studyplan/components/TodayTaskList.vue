@@ -2,10 +2,27 @@
   <el-card class="task-list" shadow="never">
     <div class="task-list__head">
       <h3 class="task-list__title">今日任务</h3>
-      <span class="task-list__hint">按优先级和截止时间排序</span>
+      <div class="task-list__actions">
+        <span class="task-list__hint">按优先级和截止时间排序</span>
+        <el-button
+          v-if="canManage"
+          size="small"
+          type="primary"
+          plain
+          data-test="add-study-task"
+          @click="emit('add')"
+        >
+          添加任务
+        </el-button>
+      </div>
     </div>
 
-    <div v-if="!tasks.length" class="task-list__empty">今日暂无任务</div>
+    <div v-if="!tasks.length" class="task-list__empty">
+      <span>今日暂无任务，可以添加一个明确的小目标。</span>
+      <el-button v-if="canManage" size="small" type="primary" @click="emit('add')">
+        添加第一个任务
+      </el-button>
+    </div>
 
     <div v-else class="task-list__items">
       <StudyTaskItem
@@ -13,7 +30,10 @@
         :key="task.id"
         :task="task"
         :submitting="submittingIds.includes(task.id)"
+        :editable="canManage"
         @toggle="emit('toggle', $event)"
+        @edit="emit('edit', $event)"
+        @remove="emit('remove', $event)"
       />
     </div>
   </el-card>
@@ -29,14 +49,19 @@ import { sortTasks } from '../utils'
 interface Props {
   tasks: StudyTask[]
   submittingIds?: number[]
+  canManage?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   submittingIds: () => [],
+  canManage: false,
 })
 
 const emit = defineEmits<{
   toggle: [task: StudyTask]
+  add: []
+  edit: [task: StudyTask]
+  remove: [task: StudyTask]
 }>()
 
 const sortedTasks = computed(() => sortTasks(props.tasks))
@@ -55,6 +80,12 @@ const sortedTasks = computed(() => sortTasks(props.tasks))
   margin-bottom: 4px;
 }
 
+.task-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .task-list__title {
   margin: 0;
   font-size: 15px;
@@ -68,8 +99,25 @@ const sortedTasks = computed(() => sortTasks(props.tasks))
 }
 
 .task-list__empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 18px 0 8px;
   font-size: 13px;
   color: var(--el-text-color-secondary);
+}
+
+@media (max-width: 600px) {
+  .task-list__head,
+  .task-list__empty {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .task-list__actions {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 </style>

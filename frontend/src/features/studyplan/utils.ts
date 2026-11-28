@@ -92,9 +92,12 @@ export function nextToggleStatus(status: StudyTaskStatus): 'TODO' | 'COMPLETED' 
   return status === 'COMPLETED' ? 'TODO' : 'COMPLETED'
 }
 
-/** 空计划判定（契约 5.1）：planId = 0 且 tasks = []，不是接口失败 */
+/**
+ * 空计划判定：只要今天没有任务，就展示可操作空态。
+ * 数据库可能已有计划容器但任务为空，此时继续显示 0/0 概览会像没有实现的空格子。
+ */
 export function isPlanEmpty(plan: TodayStudyPlan | null): boolean {
-  return !plan || (plan.planId === 0 && plan.tasks.length === 0)
+  return !plan || plan.tasks.length === 0
 }
 
 /** 截止时间只展示服务端时区里的时分，不做本地时区换算 */

@@ -6,12 +6,15 @@ import com.group4.kaoyan.modules.recommendation.engine.RecommendationEngine;
 import com.group4.kaoyan.modules.recommendation.mapper.RecommendationMapper;
 import com.group4.kaoyan.modules.studyplan.dto.StudyTaskUpdateRequest;
 import com.group4.kaoyan.modules.studyplan.dto.StudyTaskVO;
+import com.group4.kaoyan.modules.studyplan.dto.StudyTaskWriteRequest;
+import com.group4.kaoyan.modules.studyplan.entity.StudyPlan;
 import com.group4.kaoyan.modules.studyplan.entity.StudyTask;
 import com.group4.kaoyan.modules.studyplan.mapper.StudyTaskMapper;
 import com.group4.kaoyan.platform.realtime.delivery.RealtimeDeliveryPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -39,6 +42,7 @@ class StudyTaskServiceTest {
     private RecommendationMapper recommendationMapper;
     private RecommendationEngine recommendationEngine;
     private RealtimeDeliveryPort delivery;
+    private StudyPlanService studyPlanService;
     private Clock clock;
     private StudyTaskService service;
 
@@ -52,6 +56,7 @@ class StudyTaskServiceTest {
         engineTaskMapper = mock(StudyTaskMapper.class);
         recommendationMapper = mock(RecommendationMapper.class);
         delivery = mock(RealtimeDeliveryPort.class);
+        studyPlanService = mock(StudyPlanService.class);
         clock = Clock.fixed(NOW.toInstant(ZoneOffset.ofHours(8)), ZoneOffset.ofHours(8));
         // engine 用真实实例,依赖被 mock
         recommendationEngine = new RecommendationEngine(engineTaskMapper, clock);
@@ -60,7 +65,9 @@ class StudyTaskServiceTest {
         when(engineTaskMapper.selectByPlanId(anyLong())).thenReturn(Collections.emptyList());
         when(engineTaskMapper.selectByUserAndDate(anyLong(), any())).thenReturn(Collections.emptyList());
 
-        service = new StudyTaskService(studyTaskMapper, recommendationMapper, recommendationEngine, delivery, clock);
+        service = new StudyTaskService(
+                studyTaskMapper, recommendationMapper, recommendationEngine,
+                delivery, studyPlanService, clock);
     }
 
     @Test
@@ -135,6 +142,58 @@ class StudyTaskServiceTest {
                 () -> new StudyTaskUpdateRequest("OVERDUE", 0));
         assertThrows(IllegalArgumentException.class,
                 () -> new StudyTaskUpdateRequest("CANCELLED", 0));
+    }
+
+    @Test
+    @DisplayName("手工新增任务：归属今日计划、默认 TODO、返回生成 id")
+    void createManualTask() {
+        StudyPlan plan = new StudyPlan();
+        plan.setId(100L);
+        when(studyPlanService.ensureTodayPlan(USER_ID)).thenReturn(plan);
+        doAnswer(invocation -> {
+            StudyTask inserted = invocation.getArgument(0);
+            inserted.setId(700L);
+            when(studyTaskMapper.selectById(700L)).thenReturn(inserted);
+            return 1;
+        }).when(studyTaskMapper).insert(any(StudyTask.class));
+
+        StudyTaskVO task = service.create(USER_ID, new StudyTaskWriteRequest(
+                "复习极限", "数学", "极限", 30, NOW.plusHours(8), 80, null));
+
+        assertEquals(700L, task.id());
+        assertEquals("TODO", task.status());
+        ArgumentCaptor<StudyTask> captor = ArgumentCaptor.forClass(StudyTask.class);
+        verify(studyTaskMapper).insert(captor.capture());
+        assertEquals(100L, captor.getValue().getPlanId());
+        assertEquals("复习极限", captor.getValue().getTitle());
+    }
+
+    @Test
+    @DisplayName("编辑任务：内容字段走独立乐观锁 UPDATE")
+    void updateTaskDetails() {
+        StudyTask existing = task(1L, USER_ID, "TODO", 2);
+        StudyTask saved = task(1L, USER_ID, "TODO", 3);
+        saved.setTitle("新的标题");
+        when(studyTaskMapper.selectById(1L)).thenReturn(existing).thenReturn(saved);
+        when(studyTaskMapper.updateDetailsWithVersion(any(StudyTask.class), eq(2))).thenReturn(1);
+
+        StudyTaskVO result = service.updateDetails(USER_ID, 1L, new StudyTaskWriteRequest(
+                "新的标题", "数学", "极限", 45, NOW.plusHours(6), 90, 2));
+
+        assertEquals("新的标题", result.title());
+        assertEquals(3, result.version());
+    }
+
+    @Test
+    @DisplayName("删除任务：版本匹配后逻辑删除")
+    void deleteTask() {
+        StudyTask existing = task(1L, USER_ID, "TODO", 2);
+        when(studyTaskMapper.selectById(1L)).thenReturn(existing);
+        when(studyTaskMapper.logicDelete(1L, USER_ID, 2)).thenReturn(1);
+
+        service.delete(USER_ID, 1L, 2);
+
+        verify(studyTaskMapper).logicDelete(1L, USER_ID, 2);
     }
 
     // ===== helper =====
