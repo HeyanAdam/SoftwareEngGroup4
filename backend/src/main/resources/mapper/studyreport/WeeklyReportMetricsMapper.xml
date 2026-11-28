@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.studyreport.mapper.WeeklyReportMetricsMapper">
+
+    <select id="selectActiveUserIds" resultType="long">
+        SELECT user_id
+        FROM study_task
+        WHERE plan_date BETWEEN #{weekStart} AND #{weekEnd}
+          AND deleted = 0
+        UNION
+        SELECT user_id
+        FROM chat_message
+        WHERE role = 'user'
+          AND create_time &gt;= #{rangeStart}
+          AND create_time &lt; #{rangeEnd}
+        UNION
+        SELECT user_id
+        FROM user_study_goal
+        WHERE status = 1
+          AND deleted = 0
+        ORDER BY user_id
+    </select>
+
+    <resultMap id="WeeklyTaskTotalsMap"
+               type="com.group4.kaoyan.modules.studyreport.dto.WeeklyTaskTotals">
+        <result column="total_tasks" property="totalTasks"/>
+        <result column="completed_tasks" property="completedTasks"/>
+        <result column="study_minutes" property="studyMinutes"/>
+        <result column="overdue_tasks" property="overdueTasks"/>
+    </resultMap>
+
+    <select id="selectTaskTotals" resultMap="WeeklyTaskTotalsMap">
+        SELECT COALESCE(SUM(CASE WHEN status != 'CANCELLED' THEN 1 ELSE 0 END), 0) AS total_tasks,
+               COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END), 0) AS completed_tasks,
+               COALESCE(SUM(CASE WHEN status = 'COMPLETED'
+                                 THEN estimated_minutes ELSE 0 END), 0) AS study_minutes,
+               COALESCE(SUM(CASE WHEN status IN ('TODO', 'IN_PROGRESS')
+                                  AND due_at IS NOT NULL
+                                  AND due_at &lt; #{now}
+                                 THEN 1 ELSE 0 END), 0) AS overdue_tasks
+        FROM study_task
+        WHERE user_id = #{userId}
+          AND plan_date BETWEEN #{weekStart} AND #{weekEnd}
+          AND deleted = 0
+    </select>
+
+    <resultMap id="SubjectTaskMetricMap"
+               type="com.group4.kaoyan.modules.studyreport.dto.SubjectTaskMetric">
+        <result column="subject" property="subject"/>
+        <result column="total_tasks" property="totalTasks"/>
+        <result column="completed_tasks" property="completedTasks"/>
+        <result column="overdue_tasks" property="overdueTasks"/>
+    </resultMap>
+
+    <select id="selectSubjectMetrics" resultMap="SubjectTaskMetricMap">
+        SELECT subject,
+               COUNT(*) AS total_tasks,
+               SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed_tasks,
+               SUM(CASE WHEN status IN ('TODO', 'IN_PROGRESS')
+                         AND due_at IS NOT NULL
+                         AND due_at &lt; #{now}
+                        THEN 1 ELSE 0 END) AS overdue_tasks
+        FROM study_task
+        WHERE user_id = #{userId}
+          AND plan_date BETWEEN #{weekStart} AND #{weekEnd}
+          AND deleted = 0
+          AND status != 'CANCELLED'
+        GROUP BY subject
+        ORDER BY subject
+    </select>
+
+    <select id="countUserQuestions" resultType="int">
+        SELECT COUNT(*)
+        FROM chat_message
+        WHERE user_id = #{userId}
+          AND role = 'user'
+          AND create_time &gt;= #{rangeStart}
+          AND create_time &lt; #{rangeEnd}
+    </select>
+</mapper>

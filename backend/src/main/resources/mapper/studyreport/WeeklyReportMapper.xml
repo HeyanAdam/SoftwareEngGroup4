@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.studyreport.mapper.WeeklyReportMapper">
+
+    <resultMap id="BaseResultMap"
+               type="com.group4.kaoyan.modules.studyreport.entity.StudyWeeklyReport">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="week_start" property="weekStart"/>
+        <result column="week_end" property="weekEnd"/>
+        <result column="completion_rate" property="completionRate"/>
+        <result column="study_minutes" property="studyMinutes"/>
+        <result column="chat_questions" property="chatQuestions"/>
+        <result column="weak_subjects_json" property="weakSubjects"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="next_actions_json" property="nextActions"
+                typeHandler="com.group4.kaoyan.common.mybatis.JsonTypeHandler"/>
+        <result column="summary" property="summary"/>
+        <result column="generated_at" property="generatedAt"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, week_start, week_end, completion_rate, study_minutes, chat_questions,
+        weak_subjects_json, next_actions_json, summary, generated_at, create_time, update_time
+    </sql>
+
+    <select id="selectByUserAndWeek" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM study_weekly_report
+        WHERE user_id = #{userId}
+          AND week_start = #{weekStart}
+    </select>
+
+    <insert id="insert"
+            parameterType="com.group4.kaoyan.modules.studyreport.entity.StudyWeeklyReport"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO study_weekly_report
+            (user_id, week_start, week_end, completion_rate, study_minutes, chat_questions,
+             weak_subjects_json, next_actions_json, summary, generated_at, create_time, update_time)
+        VALUES
+            (#{userId}, #{weekStart}, #{weekEnd}, #{completionRate}, #{studyMinutes}, #{chatQuestions},
+             #{weakSubjects, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+             #{nextActions, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+             #{summary}, #{generatedAt}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="update"
+            parameterType="com.group4.kaoyan.modules.studyreport.entity.StudyWeeklyReport">
+        UPDATE study_weekly_report
+        SET week_end = #{weekEnd},
+            completion_rate = #{completionRate},
+            study_minutes = #{studyMinutes},
+            chat_questions = #{chatQuestions},
+            weak_subjects_json = #{weakSubjects, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+            next_actions_json = #{nextActions, typeHandler=com.group4.kaoyan.common.mybatis.JsonTypeHandler},
+            summary = #{summary},
+            generated_at = #{generatedAt},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND week_start = #{weekStart}
+    </update>
+</mapper>

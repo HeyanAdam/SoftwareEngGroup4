@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.group4.kaoyan.modules.notification.mapper.NotificationMapper">
+
+    <resultMap id="BaseResultMap" type="com.group4.kaoyan.modules.notification.entity.UserNotification">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="type" property="type"/>
+        <result column="severity" property="severity"/>
+        <result column="title" property="title"/>
+        <result column="content" property="content"/>
+        <result column="action_path" property="actionPath"/>
+        <result column="is_read" property="read"/>
+        <result column="read_at" property="readAt"/>
+        <result column="dedup_key" property="dedupKey"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, user_id, type, severity, title, content, action_path, is_read, read_at,
+        dedup_key, create_time, update_time
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_notification
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectByDedupKey" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_notification
+        WHERE dedup_key = #{dedupKey}
+    </select>
+
+    <select id="countUnread" resultType="long">
+        SELECT COUNT(*)
+        FROM user_notification
+        WHERE user_id = #{userId}
+          AND is_read = 0
+    </select>
+
+    <select id="countByStatus" resultType="long">
+        SELECT COUNT(*)
+        FROM user_notification
+        WHERE user_id = #{userId}
+        <if test="unreadOnly">
+            AND is_read = 0
+        </if>
+    </select>
+
+    <select id="selectPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM user_notification
+        WHERE user_id = #{userId}
+        <if test="unreadOnly">
+            AND is_read = 0
+        </if>
+        ORDER BY create_time DESC, id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <insert id="insert"
+            parameterType="com.group4.kaoyan.modules.notification.entity.UserNotification"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_notification
+            (user_id, type, severity, title, content, action_path, is_read, read_at,
+             dedup_key, create_time, update_time)
+        VALUES
+            (#{userId}, #{type}, #{severity}, #{title}, #{content}, #{actionPath},
+             #{read}, #{readAt}, #{dedupKey}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="markRead">
+        UPDATE user_notification
+        SET is_read = 1,
+            read_at = #{readAt},
+            update_time = #{readAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND is_read = 0
+    </update>
+
+    <update id="markAllRead">
+        UPDATE user_notification
+        SET is_read = 1,
+            read_at = #{readAt},
+            update_time = #{readAt}
+        WHERE user_id = #{userId}
+          AND is_read = 0
+    </update>
+</mapper>
