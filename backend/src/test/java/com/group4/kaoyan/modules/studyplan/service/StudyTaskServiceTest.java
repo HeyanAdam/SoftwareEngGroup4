@@ -125,6 +125,10 @@ class StudyTaskServiceTest {
 
         assertEquals("COMPLETED", vo.status());
         assertEquals(1, vo.version());
+        // 条件 UPDATE 的实体必须带上目标状态，否则 SQL 会把旧状态写回
+        ArgumentCaptor<StudyTask> captor = ArgumentCaptor.forClass(StudyTask.class);
+        verify(studyTaskMapper).updateWithVersion(captor.capture(), eq(0));
+        assertEquals("COMPLETED", captor.getValue().getStatus());
         // COMPLETED 后应触发推荐生成:engine 会查 source task
         verify(engineTaskMapper, times(1)).selectById(1L);
     }
