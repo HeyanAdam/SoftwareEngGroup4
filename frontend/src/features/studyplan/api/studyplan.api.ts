@@ -4,16 +4,25 @@
  * Mock 判定集中在 API 层，页面与 Store 不出现 Mock 分支。
  */
 
-import { ApiError, get, patch, post } from '../../../shared/api/request'
+import { ApiError, del, get, patch, post, put } from '../../../shared/api/request'
 import {
   getStudyPlanMockScenario,
   isStudyPlanMockEnabled,
   mockGenerateTodayPlan,
+  mockCreateTask,
+  mockDeleteTask,
   mockTodayPlan,
+  mockUpdateTask,
   mockUpdateTaskStatus,
   mockWeeklyReport,
 } from '../mock/studyplan.mock'
-import type { StudyTask, StudyTaskUpdateStatus, TodayStudyPlan, WeeklyStudyReportSummary } from '../types'
+import type {
+  StudyTask,
+  StudyTaskUpdateStatus,
+  StudyTaskWritePayload,
+  TodayStudyPlan,
+  WeeklyStudyReportSummary,
+} from '../types'
 import { STUDY_PLAN_PATHS } from './studyplan.paths'
 
 /** Mock 错误场景：按契约 8.1 的服务端异常口径抛出，页面走错误卡而不是空白 */
@@ -54,6 +63,36 @@ export async function updateTaskStatus(
     return mockUpdateTaskStatus(taskId, status, expectedVersion)
   }
   return patch<StudyTask>(STUDY_PLAN_PATHS.task(taskId), { status, expectedVersion })
+}
+
+/** POST /study-tasks：手工加入今日任务 */
+export async function createTask(payload: StudyTaskWritePayload): Promise<StudyTask> {
+  if (isStudyPlanMockEnabled()) {
+    if (getStudyPlanMockScenario() === 'error') throw mockServiceError()
+    return mockCreateTask(payload)
+  }
+  return post<StudyTask>(STUDY_PLAN_PATHS.tasks, payload)
+}
+
+/** PUT /study-tasks/{id}：编辑标题、科目、知识点、时长和截止时间 */
+export async function updateTask(
+  taskId: number,
+  payload: StudyTaskWritePayload,
+): Promise<StudyTask> {
+  if (isStudyPlanMockEnabled()) {
+    if (getStudyPlanMockScenario() === 'error') throw mockServiceError()
+    return mockUpdateTask(taskId, payload)
+  }
+  return put<StudyTask>(STUDY_PLAN_PATHS.task(taskId), payload)
+}
+
+/** DELETE /study-tasks/{id}：带版本号，避免删除刚被修改的任务 */
+export async function deleteTask(taskId: number, expectedVersion: number): Promise<void> {
+  if (isStudyPlanMockEnabled()) {
+    if (getStudyPlanMockScenario() === 'error') throw mockServiceError()
+    return mockDeleteTask(taskId, expectedVersion)
+  }
+  return del<void>(STUDY_PLAN_PATHS.task(taskId), { params: { expectedVersion } })
 }
 
 /** GET /study-reports/weekly/current：未生成时 reportId = null，不是 404（契约 5.11） */

@@ -12,6 +12,7 @@ import com.group4.kaoyan.modules.studyplan.mapper.StudyPlanMapper;
 import com.group4.kaoyan.modules.studyplan.mapper.StudyTaskMapper;
 import com.group4.kaoyan.modules.user.entity.UserProfile;
 import com.group4.kaoyan.modules.user.entity.UserStudyGoal;
+import com.group4.kaoyan.modules.user.mapper.UserProfileMapper;
 import com.group4.kaoyan.modules.user.mapper.UserStudyGoalMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +26,9 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 学习计划 Service。
@@ -38,6 +41,7 @@ public class StudyPlanService {
     private final StudyPlanMapper studyPlanMapper;
     private final StudyTaskMapper studyTaskMapper;
     private final UserStudyGoalMapper userStudyGoalMapper;
+    private final UserProfileMapper userProfileMapper;
     private final Clock studyClock;
 
     /**
@@ -56,15 +60,16 @@ public class StudyPlanService {
             if (daysUntilExam < 0) daysUntilExam = 0;
         }
 
-        // 2. 今日计划
+        // 2. 今日计划。手工任务和推荐接受任务都按 user_id + plan_date 归属今日，
+        //    不再只依赖 plan_id，避免“任务存在但计划容器为空”时整页显示空白。
         StudyPlan plan = studyPlanMapper.selectByUserAndDate(userId, today);
-        if (plan == null) {
+        List<StudyTask> tasks = studyTaskMapper.selectByUserAndDate(userId, today);
+        if (plan == null && tasks.isEmpty()) {
             return new StudyPlanVO(0L, today, "", examDate, daysUntilExam,
                     TodayStudySummary.empty(), Collections.emptyList());
         }
 
         // 3. 任务
-        List<StudyTask> tasks = studyTaskMapper.selectByPlanId(plan.getId());
         List<StudyTaskVO> taskVOs = tasks.stream()
                 .map(t -> toTaskVO(t, LocalDateTime.now(studyClock)))
                 .toList();
@@ -72,7 +77,8 @@ public class StudyPlanService {
         // 4. Summary
         TodayStudySummary summary = computeSummary(tasks);
 
-        return new StudyPlanVO(plan.getId(), plan.getPlanDate(), plan.getTitle(),
+        return new StudyPlanVO(plan == null ? 0L : plan.getId(), today,
+                plan == null ? "" : plan.getTitle(),
                 examDate, daysUntilExam, summary, taskVOs);
     }
 
@@ -83,9 +89,10 @@ public class StudyPlanService {
     public StudyPlanVO generate(Long userId) {
         LocalDate today = LocalDate.now(studyClock);
 
-        // 已有计划 → 直接返回
+        // 已有非空计划 → 直接返回
         StudyPlan existing = studyPlanMapper.selectByUserAndDate(userId, today);
-        if (existing != null) {
+        List<StudyTask> existingTasks = studyTaskMapper.selectByUserAndDate(userId, today);
+        if (existing != null && !existingTasks.isEmpty()) {
             return today(userId);
         }
 
@@ -95,23 +102,7 @@ public class StudyPlanService {
             throw new BizException(ErrorCode.PARAM_INVALID, "请先填写备考目标");
         }
 
-        // 创建计划
-        StudyPlan plan = new StudyPlan();
-        plan.setUserId(userId);
-        plan.setPlanDate(today);
-        plan.setTitle(buildTitle(goal));
-        plan.setStatus("ACTIVE");
-        plan.setVersion(0);
-        plan.setCreateTime(LocalDateTime.now(studyClock));
-        plan.setUpdateTime(LocalDateTime.now(studyClock));
-
-        try {
-            studyPlanMapper.insert(plan);
-        } catch (DataIntegrityViolationException e) {
-            // (user_id, plan_date) UNIQUE 冲突 → 并发重复提交,重查返回
-            log.info("生成计划时发现重复,重查已有计划 userId={}", userId);
-            return today(userId);
-        }
+        StudyPlan plan = existing != null ? existing : createPlan(userId, today, buildTitle(goal));
 
         // 生成 1~3 个任务
         generateTasks(userId, plan, goal);
@@ -119,7 +110,44 @@ public class StudyPlanService {
         return today(userId);
     }
 
+    /**
+     * 获取或创建今日计划容器。手工添加任务时调用，不自动生成任务。
+     */
+    @Transactional
+    public StudyPlan ensureTodayPlan(Long userId) {
+        LocalDate today = LocalDate.now(studyClock);
+        StudyPlan existing = studyPlanMapper.selectByUserAndDate(userId, today);
+        if (existing != null) {
+            return existing;
+        }
+        UserStudyGoal goal = findActiveGoal(userId);
+        return createPlan(userId, today, goal == null ? "考研学习计划" : buildTitle(goal));
+    }
+
     // ===== 内部方法 =====
+
+    private StudyPlan createPlan(Long userId, LocalDate date, String title) {
+        StudyPlan plan = new StudyPlan();
+        LocalDateTime now = LocalDateTime.now(studyClock);
+        plan.setUserId(userId);
+        plan.setPlanDate(date);
+        plan.setTitle(title);
+        plan.setStatus("ACTIVE");
+        plan.setVersion(0);
+        plan.setCreateTime(now);
+        plan.setUpdateTime(now);
+        try {
+            studyPlanMapper.insert(plan);
+            return plan;
+        } catch (DataIntegrityViolationException e) {
+            StudyPlan concurrent = studyPlanMapper.selectByUserAndDate(userId, date);
+            if (concurrent == null) {
+                throw e;
+            }
+            log.info("并发创建今日计划，复用已有记录 userId={}", userId);
+            return concurrent;
+        }
+    }
 
     private UserStudyGoal findActiveGoal(Long userId) {
         List<UserStudyGoal> goals = userStudyGoalMapper.selectByUserId(userId, 1);
@@ -145,6 +173,8 @@ public class StudyPlanService {
         if (subjects.isEmpty()) {
             subjects = List.of("综合");
         }
+        int dailyMinutes = dailyTargetMinutes(userId, taskCount);
+        int taskMinutes = Math.max(10, dailyMinutes / taskCount);
 
         for (int i = 0; i < taskCount; i++) {
             String subject = subjects.get(i);
@@ -154,7 +184,7 @@ public class StudyPlanService {
             task.setPlanDate(today);
             task.setTitle(subject + "：基础知识点复习");
             task.setSubject(subject);
-            task.setEstimatedMinutes(20 + (i * 5)); // 20~30 min
+            task.setEstimatedMinutes(taskMinutes);
             task.setDueAt(dayEnd);
             task.setStatus("TODO");
             task.setPriority(50 + i * 10); // 50, 60, 70
@@ -166,17 +196,28 @@ public class StudyPlanService {
     }
 
     private List<String> extractSubjects(UserStudyGoal goal) {
-        // targetSubjectScores 存的是 JSON,此处简化处理
-        List<String> subjects = new ArrayList<>();
+        Set<String> subjects = new LinkedHashSet<>();
         if (goal.getTargetSubjectScores() != null) {
-            // 简单识别常见科目键
             String json = goal.getTargetSubjectScores().toString().toLowerCase();
             if (json.contains("english") || json.contains("英语")) subjects.add("英语");
             if (json.contains("math") || json.contains("数学")) subjects.add("数学");
             if (json.contains("politics") || json.contains("政治")) subjects.add("政治");
-            if (json.contains("chinese") || json.contains("语文")) subjects.add("专业课");
+            if (json.contains("professional") || json.contains("major")
+                    || json.contains("专业课") || json.contains("408")) {
+                subjects.add("专业课");
+            }
         }
-        return subjects;
+        return new ArrayList<>(subjects);
+    }
+
+    private int dailyTargetMinutes(Long userId, int taskCount) {
+        UserProfile profile = userProfileMapper.selectByUserId(userId);
+        int weekly = profile == null || profile.getWeeklyStudyMinutes() == null
+                ? 0 : profile.getWeeklyStudyMinutes();
+        if (weekly <= 0) {
+            return taskCount * 30;
+        }
+        return Math.max(30, Math.min(240, weekly / 7));
     }
 
     public static TodayStudySummary computeSummary(List<StudyTask> tasks) {

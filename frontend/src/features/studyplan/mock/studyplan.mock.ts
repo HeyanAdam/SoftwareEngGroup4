@@ -13,7 +13,13 @@
  */
 
 import { ApiError } from '../../../shared/api/request'
-import type { StudyTask, StudyTaskStatus, TodayStudyPlan, WeeklyStudyReportSummary } from '../types'
+import type {
+  StudyTask,
+  StudyTaskStatus,
+  StudyTaskWritePayload,
+  TodayStudyPlan,
+  WeeklyStudyReportSummary,
+} from '../types'
 import { sortTasks } from '../utils'
 
 /** 与推荐 Mock 共用的开关键，见 features/insight/mock/insight.mock.ts */
@@ -305,6 +311,78 @@ export async function mockUpdateTaskStatus(
     tasks: sortTasks(currentPlan.tasks.map((candidate) => (candidate.id === taskId ? updated : candidate))),
   }
   return { ...updated }
+}
+
+/** POST /study-tasks */
+export async function mockCreateTask(payload: StudyTaskWritePayload): Promise<StudyTask> {
+  await delay(MOCK_DELAY)
+  if (getStudyPlanMockScenario() === 'error') {
+    throw new ApiError({ message: '学习计划服务暂时不可用，请稍后重试', code: 90000, httpStatus: 500 })
+  }
+  const task: StudyTask = withOverdue({
+    id: 700 + currentPlan.tasks.length,
+    title: payload.title,
+    subject: payload.subject,
+    knowledgePoint: payload.knowledgePoint,
+    estimatedMinutes: payload.estimatedMinutes,
+    dueAt: payload.dueAt,
+    status: 'TODO',
+    overdue: false,
+    priority: payload.priority,
+    version: 0,
+  })
+  currentPlan = {
+    ...currentPlan,
+    planId: currentPlan.planId || 2001,
+    tasks: sortTasks([...currentPlan.tasks, task]),
+  }
+  return { ...task }
+}
+
+/** PUT /study-tasks/{id} */
+export async function mockUpdateTask(
+  taskId: number,
+  payload: StudyTaskWritePayload,
+): Promise<StudyTask> {
+  await delay(MOCK_DELAY)
+  const task = currentPlan.tasks.find((candidate) => candidate.id === taskId)
+  if (!task) {
+    throw new ApiError({ message: '任务不存在', code: 404, httpStatus: 404 })
+  }
+  if (payload.expectedVersion === undefined || payload.expectedVersion !== task.version) {
+    throw new ApiError({ message: '任务已被修改，请刷新后重试', code: 409, httpStatus: 409 })
+  }
+  const updated = withOverdue({
+    ...task,
+    title: payload.title,
+    subject: payload.subject,
+    knowledgePoint: payload.knowledgePoint,
+    estimatedMinutes: payload.estimatedMinutes,
+    dueAt: payload.dueAt,
+    priority: payload.priority,
+    version: task.version + 1,
+  })
+  currentPlan = {
+    ...currentPlan,
+    tasks: sortTasks(currentPlan.tasks.map((candidate) => candidate.id === taskId ? updated : candidate)),
+  }
+  return { ...updated }
+}
+
+/** DELETE /study-tasks/{id} */
+export async function mockDeleteTask(taskId: number, expectedVersion: number): Promise<void> {
+  await delay(MOCK_DELAY)
+  const task = currentPlan.tasks.find((candidate) => candidate.id === taskId)
+  if (!task) {
+    throw new ApiError({ message: '任务不存在', code: 404, httpStatus: 404 })
+  }
+  if (task.version !== expectedVersion) {
+    throw new ApiError({ message: '任务已被修改，请刷新后重试', code: 409, httpStatus: 409 })
+  }
+  currentPlan = {
+    ...currentPlan,
+    tasks: currentPlan.tasks.filter((candidate) => candidate.id !== taskId),
+  }
 }
 
 /** GET /study-reports/weekly/current */

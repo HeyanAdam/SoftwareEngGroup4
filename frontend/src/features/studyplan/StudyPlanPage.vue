@@ -10,6 +10,7 @@
       </div>
       <div class="study-plan__header-actions">
         <span v-if="dataMode === 'mock'" class="study-plan__mode">Mock 数据</span>
+        <el-button size="small" @click="openSettings">学习设置</el-button>
         <el-button v-if="plan && !emptyPlan" size="small" :loading="loadingPlan" @click="handleRefresh">
           刷新
         </el-button>
@@ -29,7 +30,12 @@
 
           <div v-if="errorMessage" class="study-plan__error">
             <p class="study-plan__error-text">{{ errorMessage }}</p>
-            <el-button size="small" :loading="loadingPlan" @click="handleRefresh">重试</el-button>
+            <div class="study-plan__error-actions">
+              <el-button v-if="needsGoal" size="small" type="primary" @click="openSettings">
+                填写备考目标
+              </el-button>
+              <el-button size="small" :loading="loadingPlan" @click="handleRefresh">重试</el-button>
+            </div>
           </div>
 
           <!-- 空态与错误互斥：网络/500 只显示错误卡，不能同时显示“还没有今日学习计划”（契约 9.1） -->
@@ -46,6 +52,7 @@
             >
               生成学习计划
             </el-button>
+            <el-button v-if="canGeneratePlan" @click="openSettings">先完善学习目标</el-button>
             <p v-else class="study-plan__empty-hint">当前账号没有生成学习计划的权限。</p>
           </div>
 
@@ -55,7 +62,11 @@
             <TodayTaskList
               :tasks="plan.tasks"
               :submitting-ids="submittingTaskIds"
+              :can-manage="canManageTasks"
               @toggle="handleToggle"
+              @add="openCreateTask"
+              @edit="openEditTask"
+              @remove="handleRemoveTask"
             />
           </template>
 
@@ -81,13 +92,20 @@
         />
       </aside>
     </div>
+
+    <StudyTaskEditor
+      v-model="taskEditorVisible"
+      :task="editingTask"
+      :loading="savingTask"
+      @save="handleSaveTask"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { PERMISSIONS } from '../../shared/constants/permissions'
 import { usePermission } from '../../shared/utils/permission'
@@ -95,14 +113,16 @@ import { useInsightStore } from '../../app/stores/insight'
 import RecommendationRail from '../insight/components/RecommendationRail.vue'
 import type { Recommendation } from '../insight/types'
 import ExamCountdown from './components/ExamCountdown.vue'
+import StudyTaskEditor from './components/StudyTaskEditor.vue'
 import TodayStudySummary from './components/TodayStudySummary.vue'
 import TodayTaskList from './components/TodayTaskList.vue'
 import WeeklyDiagnosisCard from './components/WeeklyDiagnosisCard.vue'
-import type { StudyTask } from './types'
+import type { StudyTask, StudyTaskWritePayload } from './types'
 import { isPlanEmpty, nextToggleStatus } from './utils'
 
 /** 契约 8.1：403 缺少接口权限时的业务码 */
 const PERMISSION_DENIED_CODE = 10008
+const NO_EXAM_GOAL_CODE = 10000
 
 /**
  * 学习计划页（前端 A）
@@ -119,19 +139,28 @@ const {
   loadingRecommendations,
   loadingWeeklyReport,
   submittingTaskIds,
+  savingTask,
   acceptingRecommendationIds,
   errorMessage,
   recommendationErrorMessage,
   weeklyReportErrorMessage,
+  lastErrorCode,
   dataMode,
 } = storeToRefs(store)
 
 const { hasPermission } = usePermission()
 const canViewRecommendations = computed(() => hasPermission(PERMISSIONS.RECOMMENDATION_VIEW))
 const canGeneratePlan = computed(() => hasPermission(PERMISSIONS.STUDY_PLAN_CREATE))
+const canManageTasks = computed(() => hasPermission(PERMISSIONS.STUDY_TASK_UPDATE))
 
 const plan = computed(() => todayPlan.value)
 const emptyPlan = computed(() => isPlanEmpty(todayPlan.value))
+const needsGoal = computed(
+  () => lastErrorCode.value === NO_EXAM_GOAL_CODE || errorMessage.value.includes('备考目标'),
+)
+
+const taskEditorVisible = ref(false)
+const editingTask = ref<StudyTask | null>(null)
 
 /**
  * 推荐栏加载态：推荐请求未开始时（今日计划还在加载）也按 loading 渲染骨架屏。
@@ -158,6 +187,44 @@ function handleRefresh(): void {
 
 function handleGenerate(): void {
   void store.generateTodayStudy()
+}
+
+function openSettings(): void {
+  void router.push('/settings')
+}
+
+function openCreateTask(): void {
+  editingTask.value = null
+  taskEditorVisible.value = true
+}
+
+function openEditTask(task: StudyTask): void {
+  editingTask.value = task
+  taskEditorVisible.value = true
+}
+
+async function handleSaveTask(payload: StudyTaskWritePayload): Promise<void> {
+  const ok = editingTask.value
+    ? await store.editTask(editingTask.value.id, payload)
+    : await store.createTask(payload)
+  if (!ok) return
+  taskEditorVisible.value = false
+  ElMessage.success(editingTask.value ? '任务已更新' : '任务已添加')
+  editingTask.value = null
+}
+
+async function handleRemoveTask(task: StudyTask): Promise<void> {
+  try {
+    await ElMessageBox.confirm(`确认删除「${task.title}」？`, '删除任务', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  const ok = await store.removeTask(task.id)
+  if (ok) ElMessage.success('任务已删除')
 }
 
 /** 任务完成 / 取消完成（契约 9.2，409 由 Store 统一处理） */
@@ -268,6 +335,13 @@ function handleRetryWeeklyReport(): void {
   margin: 0;
   font-size: 12px;
   color: var(--el-color-danger);
+}
+
+.study-plan__error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
 }
 
 .study-plan__empty {

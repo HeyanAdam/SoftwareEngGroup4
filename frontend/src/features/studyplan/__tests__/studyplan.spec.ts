@@ -130,10 +130,9 @@ describe('任务状态修改与回滚（契约 9.2）', () => {
 })
 
 describe('展示工具', () => {
-  it('空计划判定：planId = 0 且 tasks = []', () => {
+  it('空计划判定：今天没有任务就进入可操作空态', () => {
     expect(isPlanEmpty(null)).toBe(true)
-    // 有计划 id 但没有任务：不算空计划，页面走“今日暂无任务”
-    expect(isPlanEmpty(makePlan([]))).toBe(false)
+    expect(isPlanEmpty(makePlan([]))).toBe(true)
     expect(isPlanEmpty({ ...makePlan([]), planId: 0 })).toBe(true)
     expect(isPlanEmpty({ ...makePlan([makeTask({ id: 1 })]), planId: 0 })).toBe(false)
   })
@@ -216,6 +215,58 @@ describe('Insight Store 学习计划流程', () => {
     expect(task?.version).toBe(3)
     expect(store.todayPlan?.summary.completedTasks).toBe((before ?? 0) + 1)
     expect(store.submittingTaskIds).toEqual([])
+  })
+
+  it('手工添加任务：插入今日列表并重算任务总数', async () => {
+    const store = useInsightStore()
+    await store.loadTodayStudy()
+    const before = store.todayPlan?.tasks.length ?? 0
+
+    const ok = await store.createTask({
+      title: '复习拉格朗日中值定理',
+      subject: '数学',
+      knowledgePoint: '微分中值定理',
+      estimatedMinutes: 35,
+      dueAt: '2026-11-26T21:30:00',
+      priority: 80,
+    })
+
+    expect(ok).toBe(true)
+    expect(store.todayPlan?.tasks.length).toBe(before + 1)
+    expect(store.todayPlan?.tasks.some((task) => task.title.includes('拉格朗日'))).toBe(true)
+  })
+
+  it('编辑任务：更新内容并保留服务端版本号', async () => {
+    const store = useInsightStore()
+    await store.loadTodayStudy()
+    const source = store.todayPlan?.tasks.find((task) => task.id === 502)
+    expect(source).toBeTruthy()
+
+    const ok = await store.editTask(502, {
+      title: '矩阵相似对角化：重做 3 道题',
+      subject: '数学',
+      knowledgePoint: '矩阵相似对角化',
+      estimatedMinutes: 45,
+      dueAt: '2026-11-26T22:00:00',
+      priority: 95,
+    })
+
+    const updated = store.todayPlan?.tasks.find((task) => task.id === 502)
+    expect(ok).toBe(true)
+    expect(updated?.title).toContain('重做 3 道题')
+    expect(updated?.version).toBe((source?.version ?? 0) + 1)
+  })
+
+  it('删除任务：从今日列表移除并重算概览', async () => {
+    const store = useInsightStore()
+    await store.loadTodayStudy()
+    const before = store.todayPlan?.tasks.length ?? 0
+
+    const ok = await store.removeTask(503)
+
+    expect(ok).toBe(true)
+    expect(store.todayPlan?.tasks.length).toBe(before - 1)
+    expect(store.todayPlan?.tasks.some((task) => task.id === 503)).toBe(false)
   })
 
   it('同一任务连点只提交一次 PATCH（契约 9.2 / 指南 13.4）', async () => {

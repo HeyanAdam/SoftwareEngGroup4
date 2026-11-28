@@ -24,13 +24,17 @@ import type {
 } from '../../features/insight/types'
 import { normalizeRecommendations, RECOMMENDATION_DEFAULT_LIMIT } from '../../features/insight/utils'
 import {
+  createTask as createTaskApi,
+  deleteTask as deleteTaskApi,
   fetchTodayPlan,
   fetchWeeklyReport,
   generateTodayPlan as generateTodayPlanApi,
+  updateTask as updateTaskApi,
   updateTaskStatus as updateTaskStatusApi,
 } from '../../features/studyplan/api/studyplan.api'
 import type {
   StudyTaskUpdateStatus,
+  StudyTaskWritePayload,
   TodayStudyPlan,
   WeeklyStudyReportSummary,
 } from '../../features/studyplan/types'
@@ -58,6 +62,7 @@ export const useInsightStore = defineStore('insight', () => {
   const loadingRecommendations = ref(false)
   const loadingWeeklyReport = ref(false)
   const submittingTaskIds = ref<number[]>([])
+  const savingTask = ref(false)
   const acceptingRecommendationIds = ref<number[]>([])
   const errorMessage = ref('')
   const recommendationErrorMessage = ref('')
@@ -145,6 +150,73 @@ export const useInsightStore = defineStore('insight', () => {
       }
     } finally {
       submittingTaskIds.value = submittingTaskIds.value.filter((id) => id !== taskId)
+    }
+  }
+
+  async function createTask(payload: StudyTaskWritePayload): Promise<boolean> {
+    if (savingTask.value) return false
+    savingTask.value = true
+    errorMessage.value = ''
+    try {
+      const created = await createTaskApi(payload)
+      if (todayPlan.value) {
+        todayPlan.value = insertTask(todayPlan.value, created)
+      } else {
+        await loadTodayStudy()
+      }
+      return true
+    } catch (error) {
+      errorMessage.value = errorText(error)
+      return false
+    } finally {
+      savingTask.value = false
+    }
+  }
+
+  async function editTask(taskId: number, payload: StudyTaskWritePayload): Promise<boolean> {
+    const plan = todayPlan.value
+    const task = plan?.tasks.find((item) => item.id === taskId)
+    if (!plan || !task || savingTask.value) return false
+    savingTask.value = true
+    errorMessage.value = ''
+    try {
+      const updated = await updateTaskApi(taskId, {
+        ...payload,
+        expectedVersion: task.version,
+      })
+      todayPlan.value = applyTaskUpdate(plan, updated)
+      return true
+    } catch (error) {
+      const conflict = error instanceof ApiError && (error.httpStatus === 409 || error.code === 409)
+      if (conflict) {
+        await loadTodayStudy()
+        errorMessage.value = '任务已被修改，请刷新后重试'
+      } else {
+        errorMessage.value = errorText(error)
+      }
+      return false
+    } finally {
+      savingTask.value = false
+    }
+  }
+
+  async function removeTask(taskId: number): Promise<boolean> {
+    const plan = todayPlan.value
+    const task = plan?.tasks.find((item) => item.id === taskId)
+    if (!task || savingTask.value) return false
+    savingTask.value = true
+    errorMessage.value = ''
+    try {
+      await deleteTaskApi(taskId, task.version)
+      await loadTodayStudy()
+      return true
+    } catch (error) {
+      const conflict = error instanceof ApiError && (error.httpStatus === 409 || error.code === 409)
+      if (conflict) await loadTodayStudy()
+      errorMessage.value = errorText(error)
+      return false
+    } finally {
+      savingTask.value = false
     }
   }
 
@@ -246,6 +318,7 @@ export const useInsightStore = defineStore('insight', () => {
     loadingRecommendations.value = false
     loadingWeeklyReport.value = false
     submittingTaskIds.value = []
+    savingTask.value = false
     acceptingRecommendationIds.value = []
     errorMessage.value = ''
     recommendationErrorMessage.value = ''
@@ -263,6 +336,7 @@ export const useInsightStore = defineStore('insight', () => {
     loadingRecommendations,
     loadingWeeklyReport,
     submittingTaskIds,
+    savingTask,
     acceptingRecommendationIds,
     errorMessage,
     recommendationErrorMessage,
@@ -273,6 +347,9 @@ export const useInsightStore = defineStore('insight', () => {
     loadTodayStudy,
     generateTodayStudy,
     updateTaskStatus,
+    createTask,
+    editTask,
+    removeTask,
     loadRecommendations,
     acceptRecommendation,
     dismissRecommendation,

@@ -9,6 +9,7 @@
         >
           学习计划
         </el-menu-item>
+        <el-menu-item index="/settings">学习设置</el-menu-item>
         <!-- 文件：需要 file:view；用 v-if 而不是 v-permission，避免权限恢复后菜单不回来 -->
         <el-menu-item v-if="hasPermission('file:view')" index="/files">文件</el-menu-item>
         <el-menu-item index="/chat">AI 聊天</el-menu-item>

@@ -24,6 +24,17 @@ export interface StudyTask {
   version: number
 }
 
+/** 手工新增或编辑任务的请求体；状态仍通过 PATCH 单独维护 */
+export interface StudyTaskWritePayload {
+  title: string
+  subject: string
+  knowledgePoint: string | null
+  estimatedMinutes: number
+  dueAt: string | null
+  priority: number
+  expectedVersion?: number
+}
+
 /** 今日概览（契约 4.2） */
 export interface TodayStudySummary {
   completedTasks: number
