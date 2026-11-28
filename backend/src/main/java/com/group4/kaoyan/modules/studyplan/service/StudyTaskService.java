@@ -106,7 +106,8 @@ public class StudyTaskService {
             throw new BizException(ErrorCode.NO_DATA_ACCESS, "无权访问该任务");
         }
 
-        // 3. 乐观锁条件 UPDATE
+        // 3. 把目标状态写到实体上再走乐观锁条件 UPDATE（Mapper 读取 #{task.status}）
+        task.setStatus(req.status());
         int affected = studyTaskMapper.updateWithVersion(task, req.expectedVersion());
         if (affected == 0) {
             // 重查确认原因

@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -175,15 +176,19 @@ public class StudyPlanService {
         }
         int dailyMinutes = dailyTargetMinutes(userId, taskCount);
         int taskMinutes = Math.max(10, dailyMinutes / taskCount);
+        // 画像薄弱点优先作为知识点与任务标题,没有则退回「基础知识点复习」
+        List<String> weakPoints = extractWeakPoints(userId);
 
         for (int i = 0; i < taskCount; i++) {
             String subject = subjects.get(i);
+            String weak = weakPoints.isEmpty() ? null : weakPoints.get(i % weakPoints.size());
             StudyTask task = new StudyTask();
             task.setPlanId(plan.getId());
             task.setUserId(userId);
             task.setPlanDate(today);
-            task.setTitle(subject + "：基础知识点复习");
+            task.setTitle(weak == null ? subject + "：基础知识点复习" : subject + "：" + weak + " 巩固");
             task.setSubject(subject);
+            task.setKnowledgePoint(weak);
             task.setEstimatedMinutes(taskMinutes);
             task.setDueAt(dayEnd);
             task.setStatus("TODO");
@@ -218,6 +223,49 @@ public class StudyPlanService {
             return taskCount * 30;
         }
         return Math.max(30, Math.min(240, weekly / 7));
+    }
+
+    /** 读取画像薄弱点，作为任务知识点/标题的首选；无画像或无薄弱点时返回空列表。 */
+    private List<String> extractWeakPoints(Long userId) {
+        UserProfile profile = userProfileMapper.selectByUserId(userId);
+        if (profile == null || profile.getWeakPointsJson() == null) {
+            return List.of();
+        }
+        Object raw = profile.getWeakPointsJson();
+        List<String> points = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object item : list) {
+                String v = weakPointText(item);
+                if (v != null) points.add(v);
+            }
+        } else if (raw instanceof Map<?, ?> map && map.get("points") instanceof List<?> list) {
+            for (Object item : list) {
+                String v = weakPointText(item);
+                if (v != null) points.add(v);
+            }
+        } else {
+            // JSON 字符串兜底：去掉括号与引号后按逗号切分
+            String text = String.valueOf(raw).replace("[", "").replace("]", "")
+                    .replace("\"", "").trim();
+            for (String part : text.split(",")) {
+                String v = part.trim();
+                if (!v.isEmpty() && !v.contains(":")) points.add(v);
+            }
+        }
+        return points.stream().distinct().limit(3).toList();
+    }
+
+    private String weakPointText(Object item) {
+        if (item == null) return null;
+        if (item instanceof Map<?, ?> m) {
+            for (String key : List.of("knowledgePoint", "name", "point")) {
+                Object v = m.get(key);
+                if (v != null && !String.valueOf(v).isBlank()) return String.valueOf(v);
+            }
+            return null;
+        }
+        String s = String.valueOf(item);
+        return s.isBlank() ? null : s;
     }
 
     public static TodayStudySummary computeSummary(List<StudyTask> tasks) {

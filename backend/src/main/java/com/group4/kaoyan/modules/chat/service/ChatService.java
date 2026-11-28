@@ -167,6 +167,16 @@ public class ChatService {
         return messageMapper.selectById(messageId);
     }
 
+    /** 该用户最近一条提问，供推荐引擎做「最近聊天相关知识点」规则。 */
+    public ChatMessage findLatestUserMessage(Long userId) {
+        List<ChatMessage> list = messageMapper.selectList(Wrappers.<ChatMessage>lambdaQuery()
+                .eq(ChatMessage::getUserId, userId)
+                .eq(ChatMessage::getRole, "user")
+                .orderByDesc(ChatMessage::getId)
+                .last("LIMIT 1"));
+        return list.isEmpty() ? null : list.get(0);
+    }
+
     public ChatMessage saveAssistantMessage(ChatConversation c, Long userId,
                                             String content, String referencesJson, String modelName) {
         return save(c, userId, "assistant", content, referencesJson,

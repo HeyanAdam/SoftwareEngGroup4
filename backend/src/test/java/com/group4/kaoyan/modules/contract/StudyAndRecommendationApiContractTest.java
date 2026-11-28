@@ -3,19 +3,29 @@ package com.group4.kaoyan.modules.contract;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.group4.kaoyan.common.GlobalExceptionHandler;
 import com.group4.kaoyan.common.security.PermissionConstants;
+import com.group4.kaoyan.common.security.SecurityUtils;
 import com.group4.kaoyan.modules.recommendation.controller.RecommendationController;
 import com.group4.kaoyan.modules.recommendation.dto.AcceptRecommendationResult;
 import com.group4.kaoyan.modules.recommendation.dto.DismissRecommendationResult;
 import com.group4.kaoyan.modules.recommendation.dto.RecommendationListVO;
 import com.group4.kaoyan.modules.recommendation.dto.RecommendationVO;
+import com.group4.kaoyan.modules.recommendation.service.RecommendationService;
 import com.group4.kaoyan.modules.studyplan.controller.StudyPlanController;
 import com.group4.kaoyan.modules.studyplan.controller.StudyTaskController;
 import com.group4.kaoyan.modules.studyplan.dto.StudyPlanVO;
 import com.group4.kaoyan.modules.studyplan.dto.StudyTaskVO;
 import com.group4.kaoyan.modules.studyplan.dto.TodayStudySummary;
+import com.group4.kaoyan.modules.studyplan.service.StudyPlanService;
+import com.group4.kaoyan.modules.studyplan.service.StudyTaskService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -26,6 +36,12 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * 学习计划与推荐接口契约测试。
@@ -47,6 +63,29 @@ class StudyAndRecommendationApiContractTest {
     private final ObjectMapper mapper = new ObjectMapper()
             .findAndRegisterModules()
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
+    private static final Long USER_ID = 10001L;
+
+    private MockMvc mvc;
+    private StudyPlanService studyPlanService;
+    private RecommendationService recommendationService;
+
+    @BeforeEach
+    void setUpMvc() {
+        studyPlanService = mock(StudyPlanService.class);
+        recommendationService = mock(RecommendationService.class);
+        // Spring Boot 默认 Jackson 关闭 WRITE_DATES_AS_TIMESTAMPS，standalone 需显式对齐
+        MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter(
+                new ObjectMapper().findAndRegisterModules()
+                        .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS));
+        mvc = MockMvcBuilders.standaloneSetup(
+                        new StudyPlanController(studyPlanService),
+                        new StudyTaskController(mock(StudyTaskService.class)),
+                        new RecommendationController(recommendationService))
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setMessageConverters(converter)
+                .build();
+    }
 
     // ============ 权限注解反射校验 ============
 
@@ -208,5 +247,63 @@ class StudyAndRecommendationApiContractTest {
         String json = mapper.writeValueAsString(result);
         assertTrue(json.contains("\"recommendationId\""), json);
         assertTrue(json.contains("\"status\":\"DISMISSED\""), json);
+    }
+
+    // ============ standalone MockMvc:真实 HTTP 响应体 ============
+
+    @Test
+    @DisplayName("GET /study-plans/today → data.planDate/daysUntilExam/summary/tasks[0]")
+    void todayEndpointReturnsContractJson() throws Exception {
+        LocalDate planDate = LocalDate.of(2026, 11, 26);
+        StudyTaskVO task = new StudyTaskVO(1L, "复习极限", "数学", "极限", 30,
+                OffsetDateTime.of(2026, 11, 26, 23, 59, 0, 0, ZoneOffset.ofHours(8)),
+                "TODO", true, 70, 2);
+        StudyPlanVO vo = new StudyPlanVO(100L, planDate, "考研计划",
+                planDate.plusDays(30), 30, new TodayStudySummary(1, 3, 30, 0), List.of(task));
+        when(studyPlanService.today(USER_ID)).thenReturn(vo);
+
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            mocked.when(SecurityUtils::currentUserId).thenReturn(USER_ID);
+            mvc.perform(get("/api/v1/study-plans/today"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.planDate").value("2026-11-26"))
+                    .andExpect(jsonPath("$.data.daysUntilExam").value(30))
+                    .andExpect(jsonPath("$.data.summary.completedTasks").value(1))
+                    .andExpect(jsonPath("$.data.tasks[0].overdue").value(true))
+                    .andExpect(jsonPath("$.data.tasks[0].version").value(2));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /recommendations → data.items / data.generatedAt")
+    void recommendationsEndpointReturnsContractJson() throws Exception {
+        OffsetDateTime now = OffsetDateTime.of(2026, 11, 26, 10, 0, 0, 0, ZoneOffset.ofHours(8));
+        RecommendationVO rec = new RecommendationVO(1L, "TODAY", "STUDY_TASK",
+                "复习极限", "该任务已逾期", "CREATE_TASK", "加入任务", null,
+                new BigDecimal("0.95"), 30, "数学", "极限",
+                "ACTIVE", now, now.plusDays(1));
+        when(recommendationService.list(USER_ID, "TODAY", null, null, null))
+                .thenReturn(new RecommendationListVO(List.of(rec), now));
+
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            mocked.when(SecurityUtils::currentUserId).thenReturn(USER_ID);
+            mvc.perform(get("/api/v1/recommendations").param("scene", "TODAY"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(0))
+                    .andExpect(jsonPath("$.data.items[0].title").value("复习极限"))
+                    .andExpect(jsonPath("$.data.generatedAt").value("2026-11-26T10:00:00+08:00"));
+        }
+    }
+
+    @Test
+    @DisplayName("未登录调用 /study-plans/today → 401")
+    void todayEndpointRequiresLogin() throws Exception {
+        try (MockedStatic<SecurityUtils> mocked = mockStatic(SecurityUtils.class)) {
+            mocked.when(SecurityUtils::currentUserId)
+                    .thenThrow(new com.group4.kaoyan.common.BizException(401, "未登录或登录已失效"));
+            mvc.perform(get("/api/v1/study-plans/today"))
+                    .andExpect(status().isUnauthorized());
+        }
     }
 }

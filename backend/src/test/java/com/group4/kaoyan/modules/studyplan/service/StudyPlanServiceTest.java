@@ -8,12 +8,14 @@ import com.group4.kaoyan.modules.studyplan.entity.StudyPlan;
 import com.group4.kaoyan.modules.studyplan.entity.StudyTask;
 import com.group4.kaoyan.modules.studyplan.mapper.StudyPlanMapper;
 import com.group4.kaoyan.modules.studyplan.mapper.StudyTaskMapper;
+import com.group4.kaoyan.modules.user.entity.UserProfile;
 import com.group4.kaoyan.modules.user.entity.UserStudyGoal;
 import com.group4.kaoyan.modules.user.mapper.UserProfileMapper;
 import com.group4.kaoyan.modules.user.mapper.UserStudyGoalMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -211,6 +213,37 @@ class StudyPlanServiceTest {
         verify(studyPlanMapper, times(1)).insert(any(StudyPlan.class));
         // 应该插入了至少 1 个任务(从 english/math 识别出 2 科)
         verify(studyTaskMapper, atLeast(1)).insert(any(StudyTask.class));
+    }
+
+    @Test
+    @DisplayName("generate:画像有薄弱点 → 任务标题与知识点优先使用薄弱点")
+    void generateUsesWeakPoints() {
+        UserStudyGoal goal = new UserStudyGoal();
+        goal.setExamDate(TODAY.plusDays(50));
+        goal.setTargetSubjectScores("{\"math\":110}");
+        when(userStudyGoalMapper.selectByUserId(USER_ID, 1)).thenReturn(List.of(goal));
+
+        StudyPlan created = new StudyPlan();
+        created.setId(500L);
+        created.setUserId(USER_ID);
+        created.setPlanDate(TODAY);
+        when(studyPlanMapper.selectByUserAndDate(USER_ID, TODAY))
+                .thenReturn(null)
+                .thenReturn(created);
+        when(studyTaskMapper.selectByUserAndDate(USER_ID, TODAY)).thenReturn(Collections.emptyList());
+
+        UserProfile profile = new UserProfile();
+        profile.setWeeklyStudyMinutes(210);
+        profile.setWeakPointsJson(List.of("极限", "概率论"));
+        when(userProfileMapper.selectByUserId(USER_ID)).thenReturn(profile);
+
+        service.generate(USER_ID);
+
+        ArgumentCaptor<StudyTask> captor = ArgumentCaptor.forClass(StudyTask.class);
+        verify(studyTaskMapper, atLeast(1)).insert(captor.capture());
+        StudyTask first = captor.getAllValues().get(0);
+        assertEquals("极限", first.getKnowledgePoint());
+        assertTrue(first.getTitle().contains("极限"), first.getTitle());
     }
 
     // ===== helper =====

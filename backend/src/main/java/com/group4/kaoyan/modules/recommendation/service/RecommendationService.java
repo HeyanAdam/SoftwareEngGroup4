@@ -3,6 +3,8 @@ package com.group4.kaoyan.modules.recommendation.service;
 import com.group4.kaoyan.common.BizException;
 import com.group4.kaoyan.common.ErrorCode;
 import com.group4.kaoyan.common.StudyTimeUtils;
+import com.group4.kaoyan.modules.chat.entity.ChatMessage;
+import com.group4.kaoyan.modules.chat.service.ChatService;
 import com.group4.kaoyan.modules.recommendation.dto.*;
 import com.group4.kaoyan.modules.recommendation.engine.RecommendationEngine;
 import com.group4.kaoyan.modules.recommendation.entity.UserRecommendation;
@@ -35,6 +37,7 @@ public class RecommendationService {
     private final RecommendationEngine recommendationEngine;
     private final StudyTaskMapper studyTaskMapper;
     private final StudyPlanService studyPlanService;
+    private final ChatService chatService;
     private final Clock studyClock;
 
     private static final List<String> VALID_SCENES = List.of("TODAY", "CHAT", "TASK_COMPLETE");
@@ -57,6 +60,9 @@ public class RecommendationService {
             throw new BizException(ErrorCode.PARAM_INVALID, "contextType 非 NONE 时 contextId 必填");
         }
         int realLimit = (limit == null ? 3 : Math.min(limit, 10));
+
+        // 上下文归属校验：上下文不存在 404；存在但不属于当前用户 10009
+        validateContextOwnership(userId, normalizedContextType, contextId);
 
         LocalDateTime now = LocalDateTime.now(studyClock);
 
@@ -97,6 +103,35 @@ public class RecommendationService {
             case "TASK_COMPLETE" -> { if (contextId != null) result.addAll(recommendationEngine.generateTASK_COMPLETE(userId, contextId)); }
         }
         return result;
+    }
+
+    /**
+     * 上下文归属校验。上下文不存在 → 404，存在但属于他人 → 10009。
+     * 仅 MESSAGE / CONVERSATION / TASK 需要校验；NONE 直接跳过。
+     */
+    private void validateContextOwnership(Long userId, String contextType, Long contextId) {
+        switch (contextType) {
+            case "MESSAGE" -> {
+                ChatMessage message = chatService.findMessage(contextId);
+                if (message == null) {
+                    throw new BizException(404, "上下文消息不存在");
+                }
+                if (!userId.equals(message.getUserId())) {
+                    throw new BizException(ErrorCode.NO_DATA_ACCESS, "无权访问该上下文");
+                }
+            }
+            case "CONVERSATION" -> chatService.findOwned(userId, contextId);
+            case "TASK" -> {
+                StudyTask task = studyTaskMapper.selectById(contextId);
+                if (task == null) {
+                    throw new BizException(404, "上下文任务不存在");
+                }
+                if (!userId.equals(task.getUserId())) {
+                    throw new BizException(ErrorCode.NO_DATA_ACCESS, "无权访问该上下文");
+                }
+            }
+            default -> { }
+        }
     }
 
     /**
